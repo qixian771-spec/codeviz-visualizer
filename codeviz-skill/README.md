@@ -62,8 +62,12 @@ CodeViz 作为一个后台微服务，监听大纲文件与代码改动：
 
 ## 🚀 快速开始
 
-### 1. 确保环境与任务文件
-在你的项目根目录下（或 `specs/` 目录下）拥有 `tasks.md` 大纲。
+### 1. 安装与注册 (Claude Code 插件一键安装)
+克隆项目后，在根目录下运行安装脚本，它会动态检测克隆目录并自动注册到你的 Claude 全局技能路径下：
+```bash
+node bin/install.js
+```
+*如需卸载，运行 `node bin/install.js --uninstall` 即可安全清除。*
 
 ### 2. 运行服务
 进入 `codeviz-skill/` 并运行：
