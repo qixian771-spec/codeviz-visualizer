@@ -1,0 +1,11 @@
+.DS_Store
+node_modules/
+dist/
+build/
+.cache/
+.next/
+*.log
+codeviz-skill/logs/
+codeviz-skill/.claude/
+codeviz-skill/tests/temp-project/
+.workbuddy/
