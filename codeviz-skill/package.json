@@ -1,0 +1,20 @@
+{
+  "name": "codeviz-skill",
+  "version": "0.1.0",
+  "description": "Render Spec Kit tasks.md as a realtime project progress map.",
+  "private": true,
+  "type": "commonjs",
+  "bin": {
+    "codeviz": "bin/codeviz.js"
+  },
+  "scripts": {
+    "start": "node bin/codeviz.js",
+    "demo": "node bin/codeviz.js examples --port 7879",
+    "check": "node --check bin/codeviz.js && node --check src/parser.js && node --check src/server.js && node --check src/inferencer.js && node --check src/git-tracker.js && node --check src/project-manager.js && node --check src/watcher.js && node --check templates/client.js",
+    "test": "node tests/smoke.test.js && node tests/realtime.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {}
+}
