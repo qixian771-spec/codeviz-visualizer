@@ -14,37 +14,44 @@ const path = require('path');
  */
 function getRecentCommits(projectRoot, limit = 50) {
   try {
-    // 获取 commit 列表
+    // 一次性获取 commit 列表以及每个 commit 改动的文件，避免多次执行 git show 的同步开销
     const logOutput = execSync(
-      `git log --pretty=format:"%H|%an|%ad|%s" --date=iso -n ${limit}`,
+      `git log --name-status --pretty=format:"COMMIT:%H|%an|%ad|%s" -n ${limit}`,
       { cwd: projectRoot, encoding: 'utf-8', timeout: 5000 }
     ).trim();
 
     if (!logOutput) return [];
 
-    const commits = logOutput.split('\n').map(line => {
-      const [hash, author, date, ...msgParts] = line.split('|');
-      return {
-        hash: hash.trim(),
-        author: author.trim(),
-        date: date.trim(),
-        message: msgParts.join('|').trim()
-      };
-    });
+    const commits = [];
+    let currentCommit = null;
 
-    // 为每个 commit 获取变更文件
-    return commits.map(commit => {
-      try {
-        const filesOutput = execSync(
-          `git show --pretty="" --name-only ${commit.hash}`,
-          { cwd: projectRoot, encoding: 'utf-8', timeout: 5000 }
-        ).trim();
-        commit.files = filesOutput ? filesOutput.split('\n').map(f => f.trim()).filter(Boolean) : [];
-      } catch (e) {
-        commit.files = [];
+    const lines = logOutput.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      if (trimmed.startsWith('COMMIT:')) {
+        const payload = trimmed.substring(7);
+        const [hash, author, date, ...msgParts] = payload.split('|');
+        currentCommit = {
+          hash: hash.trim(),
+          author: author.trim(),
+          date: date.trim(),
+          message: msgParts.join('|').trim(),
+          files: []
+        };
+        commits.push(currentCommit);
+      } else if (currentCommit) {
+        // --name-status 输出格式例如: "M\tpath/to/file" 或 "A\tpath/to/file"
+        const parts = trimmed.split(/\s+/);
+        if (parts.length >= 2) {
+          currentCommit.files.push(parts[1].trim());
+        } else {
+          currentCommit.files.push(trimmed);
+        }
       }
-      return commit;
-    });
+    }
+    return commits;
   } catch (e) {
     // 不是 git 仓库或 git 命令失败
     return [];

@@ -223,35 +223,60 @@ class CodeVizClient {
   computeLayout() {
     const phaseSource = this.normalizePhases();
     const phaseCount = Math.max(phaseSource.length, 1);
-    const gapPercent = phaseCount > 4 ? 2 : 3;
+    
+    // 如果阶段数量很多，需要减小间距甚至双排布局以防止溢出和重叠
+    const gapPercent = phaseCount > 6 ? 1 : (phaseCount > 4 ? 2 : 3);
     const side = 1;
-    const widthPercent = (100 - side * 2 - gapPercent * (phaseCount - 1)) / phaseCount;
+    // 确保宽度至少有 5%，防止负宽崩溃
+    const widthPercent = Math.max(5, (100 - side * 2 - gapPercent * (phaseCount - 1)) / phaseCount);
 
     const phases = [];
     const nodes = [];
 
+    // 如果阶段极多，使用两排排版以保障可用空间
+    const multiRowLayout = phaseCount > 5;
+
     phaseSource.forEach((phase, phaseIndex) => {
-      const top = phaseCount > 5 && phaseIndex >= 4 ? 55 : 6;
-      const height = phaseCount > 5 && phaseIndex >= 4 ? 39 : 88;
-      const left = side + phaseIndex * (widthPercent + gapPercent);
+      let top = 6;
+      let height = 88;
+      let left = side + phaseIndex * (widthPercent + gapPercent);
+
+      if (multiRowLayout) {
+        // 双排排版：奇数排上，偶数排下（或前一半上，后一半下）
+        const half = Math.ceil(phaseCount / 2);
+        if (phaseIndex >= half) {
+          top = 50;
+          height = 44;
+          left = side + (phaseIndex - half) * (widthPercent * 2 + gapPercent * 2);
+        } else {
+          top = 4;
+          height = 44;
+          left = side + phaseIndex * (widthPercent * 2 + gapPercent * 2);
+        }
+      }
+
       const phaseTasks = this.tasks.filter(task => (task.phase || 'phase-1') === phase.id);
       const phaseStatus = this.getPhaseStatus(phaseTasks);
 
-      phases.push({ ...phase, left, top, width: widthPercent, height, status: phaseStatus });
+      const actualWidth = multiRowLayout ? widthPercent * 2 + gapPercent : widthPercent;
+      phases.push({ ...phase, left, top, width: actualWidth, height, status: phaseStatus });
 
       const maxRows = Math.max(phaseTasks.length, 1);
       const nodeTopMin = top + 8;
-      const nodeTopMax = top + height - 18;
+      const nodeTopMax = top + height - 16;
       const step = maxRows > 1 ? (nodeTopMax - nodeTopMin) / (maxRows - 1) : 0;
-      const nodeLeft = left + Math.max(1.7, Math.min(3, widthPercent * 0.15));
+      
+      // 自适应的 Node 左边距
+      const nodeLeft = left + Math.max(1.0, Math.min(3.0, actualWidth * 0.15));
 
       phaseTasks.forEach((task, taskIndex) => {
+        // 如果节点过多，限制 stagger top 以免超出
         const staggerTop = maxRows === 1 ? top + height * 0.42 : nodeTopMin + taskIndex * step;
         nodes.push({
           task,
           phase,
           left: nodeLeft,
-          top: Math.max(top + 7, Math.min(staggerTop, top + height - 18)),
+          top: Math.max(top + 6, Math.min(staggerTop, top + height - 16)),
           delay: phaseIndex * 90 + taskIndex * 55
         });
       });
@@ -484,7 +509,12 @@ class CodeVizClient {
     document.documentElement.dataset.theme = resolved;
 
     if (this.dom.themeToggle) {
-      this.dom.themeToggle.querySelectorAll('[data-theme-choice]').forEach(button => {
+      // 容错处理：不仅寻找子按钮，如果 themeToggle 本身有 data-theme-choice，也一并处理
+      const buttons = Array.from(this.dom.themeToggle.querySelectorAll('[data-theme-choice]'));
+      if (this.dom.themeToggle.hasAttribute('data-theme-choice')) {
+        buttons.push(this.dom.themeToggle);
+      }
+      buttons.forEach(button => {
         button.classList.toggle('active', button.dataset.themeChoice === this.themeChoice);
       });
     }
