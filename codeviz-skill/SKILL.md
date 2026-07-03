@@ -3,6 +3,10 @@ name: codeviz
 description: 给 Spec Kit 补上缺失的可视化——把 tasks.md 渲染成实时进度导图
 color: purple
 emoji: 📊
+commands:
+  - name: "/codeviz"
+    description: "启动并打开 CodeViz 进度可视化面板"
+    action: "node /Users/niuniu/Workbuddy/2026-07-03-05-24-57/codeviz-skill/bin/codeviz.js"
 trigger:
   - 开始可视化
   - 显示进度
