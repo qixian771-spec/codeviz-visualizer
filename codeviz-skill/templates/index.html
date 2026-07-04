@@ -51,12 +51,23 @@
       --text-tertiary: #71717a;
       --border: rgba(161, 161, 170, 0.38);
       --border-soft: rgba(161, 161, 170, 0.28);
+      --flow: #7c3aed;
+      --flow-glow: rgba(124, 58, 237, 0.35);
       --pending-fill: rgba(244, 244, 245, 0.72);
       --pending-border: #a1a1aa;
       --pending-text: #52525b;
       --progress-fill: rgba(254, 243, 199, 0.78);
+      --progress-border: #d97706;
+      --progress-text: #92400e;
+      --progress-glow: rgba(217, 119, 6, 0.3);
       --done-fill: rgba(209, 250, 229, 0.72);
+      --done-border: #059669;
+      --done-text: #065f46;
+      --done-glow: rgba(5, 150, 105, 0.25);
       --error-fill: rgba(254, 226, 226, 0.78);
+      --error-border: #dc2626;
+      --error-text: #991b1b;
+      --error-glow: rgba(220, 38, 38, 0.3);
     }
 
     html, body { height: 100%; overflow: hidden; }
@@ -261,7 +272,7 @@
     }
 
     .stat-pill:hover { transform: translateY(-1px); border-color: var(--text-tertiary); }
-    .stat-pill .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .stat-pill .dot { width: 9px; height: 9px; border-radius: 50%; position: relative; }
     .stat-pill.done .dot { background: var(--done-border); box-shadow: 0 0 10px var(--done-glow); }
     .stat-pill.progress .dot { background: var(--progress-border); box-shadow: 0 0 10px var(--progress-glow); }
     .stat-pill.error .dot { background: var(--error-border); box-shadow: 0 0 10px var(--error-glow); animation: pulse 1.5s infinite; }
@@ -438,6 +449,32 @@
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+    }
+
+    /* Light theme: softer grid, glow, and shadows */
+    :root[data-theme="light"] body::before {
+      background-image: radial-gradient(circle at 1px 1px, rgba(0,0,0,0.04) 1px, transparent 0);
+    }
+    :root[data-theme="light"] body::after {
+      background:
+        radial-gradient(ellipse 60% 50% at 15% 10%, rgba(124, 58, 237, 0.07), transparent 60%),
+        radial-gradient(ellipse 50% 40% at 85% 90%, rgba(5, 150, 105, 0.05), transparent 60%),
+        radial-gradient(ellipse 40% 30% at 50% 50%, rgba(217, 119, 6, 0.03), transparent 70%);
+    }
+    :root[data-theme="light"] .node:hover {
+      box-shadow: 0 16px 40px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.05);
+    }
+    :root[data-theme="light"] .brand-logo {
+      box-shadow: 0 4px 16px rgba(124, 58, 237, 0.25), inset 0 1px 0 rgba(255,255,255,0.3);
+    }
+    :root[data-theme="light"] .brand-logo::after {
+      opacity: 0.3;
+    }
+    :root[data-theme="light"] .flow-line {
+      opacity: 0.35;
+    }
+    :root[data-theme="light"] .flow-line.active {
+      opacity: 0.75;
     }
   </style>
 </head>
