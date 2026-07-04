@@ -41,6 +41,28 @@ function createServer(projectManager) {
     const parsedUrl = new URL(req.url, 'http://localhost');
     const pathname = parsedUrl.pathname;
 
+    // API: 兼容旧前端：获取默认项目的任务导图
+    // 旧版本 client.js 会请求 /api/map；保留该端点可以避免浏览器缓存旧 JS 时页面空白。
+    if (pathname === '/api/map') {
+      const project = projectManager.listProjects()[0];
+      if (!project) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Project not found' }));
+        return;
+      }
+      try {
+        const payload = createProjectPayload(project);
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(payload));
+      } catch (e) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'tasks.md not found at ' + project.tasksPath }));
+      }
+      return;
+    }
+
     // API: 获取项目列表
     if (pathname === '/api/projects') {
       const projects = projectManager.listProjects().map(p => ({
