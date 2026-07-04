@@ -65,7 +65,14 @@ class CodeVizClient {
 
     window.addEventListener('resize', () => {
       clearTimeout(this.resizeTimer);
-      this.resizeTimer = setTimeout(() => this.drawLines(), 120);
+      this.resizeTimer = setTimeout(() => {
+        // 窗口宽度变化可能触发宽/窄布局切换，需要完整重排
+        if (this.tasks.length) {
+          this.render(false);
+        } else {
+          this.drawLines();
+        }
+      }, 150);
     });
   }
 
@@ -216,6 +223,7 @@ class CodeVizClient {
 
     // 设置 canvas 内容层的最小高度，确保能容纳所有节点
     const contentHeight = layout.contentHeight || 0;
+    this.dom.canvas.style.minHeight = contentHeight + 'px';
     this.dom.phaseLayer.style.height = contentHeight + 'px';
     this.dom.nodeLayer.style.height = contentHeight + 'px';
 
@@ -243,15 +251,64 @@ class CodeVizClient {
     const PHASE_TOP_PAD = 46;     // Phase 区域内，第一个节点距顶部（留空给 label）
     const PHASE_BOTTOM_PAD = 20;  // Phase 区域底部留白
     const CANVAS_TOP = 10;        // 距 canvas 顶部的初始间距
+    const SECTION_GAP = 18;       // 窄屏单列模式下 Phase 之间的间距
 
-    // 水平布局：用百分比（简单且响应式）
-    const gapPercent = phaseCount > 6 ? 1 : (phaseCount > 4 ? 2 : 3);
-    const side = 1;
-    const widthPercent = Math.max(5, (100 - side * 2 - gapPercent * (phaseCount - 1)) / phaseCount);
+    const canvasWidth = this.dom.canvas ? this.dom.canvas.clientWidth : window.innerWidth;
+    const narrowMode = canvasWidth < 760;
 
     const phases = [];
     const nodes = [];
     let maxContentBottom = 0;
+
+    if (narrowMode) {
+      // 小窗口/内嵌预览：纵向单列，节点用像素宽度确保不溢出。
+      const phaseLeft = 0;
+      const phaseWidth = 100;
+      const canvasPad = 16;
+      const nodeWidth = Math.max(120, Math.min(220, canvasWidth - canvasPad * 2 - 20));
+      const nodeLeft = canvasPad;
+      let currentTop = CANVAS_TOP;
+
+      phaseSource.forEach((phase, phaseIndex) => {
+        const phaseTasks = this.tasks.filter(task => (task.phase || 'phase-1') === phase.id);
+        const phaseStatus = this.getPhaseStatus(phaseTasks);
+        const taskCount = Math.max(phaseTasks.length, 1);
+        const phaseContentHeight = PHASE_TOP_PAD + taskCount * NODE_STEP + PHASE_BOTTOM_PAD;
+
+        phases.push({
+          ...phase,
+          left: phaseLeft,
+          topPx: currentTop,
+          width: phaseWidth,
+          heightPx: phaseContentHeight,
+          status: phaseStatus
+        });
+
+        phaseTasks.forEach((task, taskIndex) => {
+          const nodeTopPx = currentTop + PHASE_TOP_PAD + taskIndex * NODE_STEP;
+          nodes.push({
+            task,
+            phase,
+            left: nodeLeft,
+            topPx: nodeTopPx,
+            width: nodeWidth,
+            narrowMode: true,
+            delay: phaseIndex * 90 + taskIndex * 55
+          });
+          maxContentBottom = Math.max(maxContentBottom, nodeTopPx + NODE_HEIGHT);
+        });
+
+        maxContentBottom = Math.max(maxContentBottom, currentTop + phaseContentHeight);
+        currentTop += phaseContentHeight + SECTION_GAP;
+      });
+
+      return { phases, nodes, contentHeight: maxContentBottom + 90, narrowMode };
+    }
+
+    // 宽屏：横向阶段布局
+    const gapPercent = phaseCount > 6 ? 1 : (phaseCount > 4 ? 2 : 3);
+    const side = 1;
+    const widthPercent = Math.max(14, (100 - side * 2 - gapPercent * (phaseCount - 1)) / phaseCount);
 
     phaseSource.forEach((phase, phaseIndex) => {
       const left = side + phaseIndex * (widthPercent + gapPercent);
@@ -292,7 +349,7 @@ class CodeVizClient {
     // 内容总高度（给 canvas 滚动用）
     const contentHeight = maxContentBottom + 40; // 底部多留 40px
 
-    return { phases, nodes, contentHeight };
+    return { phases, nodes, contentHeight, narrowMode };
   }
 
   normalizePhases() {
@@ -341,7 +398,14 @@ class CodeVizClient {
     el.className = `node ${status}${flash}`;
     el.dataset.id = task.id;
     el.title = this.buildNodeTitle(task);
-    el.style.left = `${nodeBox.left}%`;
+
+    // 窄屏单列模式下用像素定位宽度，避免百分比 + 固定 156px 冲突
+    if (nodeBox.narrowMode) {
+      el.style.left = `${nodeBox.left}px`;
+      el.style.width = `${nodeBox.width}px`;
+    } else {
+      el.style.left = `${nodeBox.left}%`;
+    }
     el.style.top = `${nodeBox.topPx}px`;
     el.style.animationDelay = `${nodeBox.delay || index * 45}ms`;
 

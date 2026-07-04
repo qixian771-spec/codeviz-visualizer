@@ -346,6 +346,7 @@
     .node {
       position: absolute;
       width: 156px;
+      max-width: calc(100% - 32px);
       padding: 13px 15px;
       background: var(--bg-elevated);
       border: 1px solid var(--border);
@@ -454,8 +455,9 @@
       .topbar { padding: 16px; gap: 12px; align-items: flex-start; }
       .topbar-left { flex-direction: column; align-items: flex-start; gap: 10px; }
       .stat-pills { padding: 0 16px 14px; flex-wrap: wrap; }
-      .canvas-wrap { min-height: 720px; padding: 0 16px 20px; }
-      .legend { left: 16px; bottom: 12px; flex-wrap: wrap; }
+      .canvas-wrap { min-height: 600px; padding: 0 12px 16px; }
+      .canvas { overflow-y: auto; overflow-x: auto; }
+      .legend { left: 12px; bottom: 8px; flex-wrap: wrap; }
       .hint { display: none; }
     }
 
@@ -580,6 +582,6 @@
       }
     });
   </script>
-  <script src="/client.js?v=5"></script>
+  <script src="/client.js?v=6"></script>
 </body>
 </html>
