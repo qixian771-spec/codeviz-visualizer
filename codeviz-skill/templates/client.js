@@ -305,14 +305,17 @@ class CodeVizClient {
       return { phases, nodes, contentHeight: maxContentBottom + 90, narrowMode };
     }
 
-    // 宽屏：横向阶段布局
+    // 宽屏：横向阶段布局 + 拓扑排序 + 重心排序
     const gapPercent = phaseCount > 6 ? 1 : (phaseCount > 4 ? 2 : 3);
     const side = 1;
     const widthPercent = Math.max(14, (100 - side * 2 - gapPercent * (phaseCount - 1)) / phaseCount);
 
+    // 对同一阶段内的任务进行拓扑排序（Kahn's Algorithm）
+    const sortedTasksByPhase = this._topoSortByPhase(phaseSource);
+
     phaseSource.forEach((phase, phaseIndex) => {
       const left = side + phaseIndex * (widthPercent + gapPercent);
-      const phaseTasks = this.tasks.filter(task => (task.phase || 'phase-1') === phase.id);
+      const phaseTasks = sortedTasksByPhase.get(phase.id) || [];
       const phaseStatus = this.getPhaseStatus(phaseTasks);
       const taskCount = Math.max(phaseTasks.length, 1);
 
@@ -346,10 +349,157 @@ class CodeVizClient {
       maxContentBottom = Math.max(maxContentBottom, CANVAS_TOP + phaseContentHeight);
     });
 
+    // 重心排序（Barycenter Heuristic）：根据前置节点的平均 Y 坐标重排同列节点
+    this._barycentricReorder(nodes, phases, NODE_STEP, PHASE_TOP_PAD, CANVAS_TOP);
+
     // 内容总高度（给 canvas 滚动用）
     const contentHeight = maxContentBottom + 40; // 底部多留 40px
 
     return { phases, nodes, contentHeight, narrowMode };
+  }
+
+  /**
+   * 按 Phase 对任务进行拓扑排序（Kahn's Algorithm）
+   * 有环依赖时优雅降级（保持原始顺序）
+   * @param {Array} phaseSource - Phase 列表
+   * @returns {Map<string, Array>} phase.id → 排序后的任务数组
+   */
+  _topoSortByPhase(phaseSource) {
+    const result = new Map();
+    const allTasksById = new Map(this.tasks.map(t => [t.id, t]));
+
+    phaseSource.forEach(phase => {
+      const phaseTasks = this.tasks.filter(task => (task.phase || 'phase-1') === phase.id);
+
+      if (phaseTasks.length <= 1) {
+        result.set(phase.id, phaseTasks);
+        return;
+      }
+
+      // 构建该 Phase 内的局部依赖图
+      const phaseTaskIds = new Set(phaseTasks.map(t => t.id));
+      const inDegree = new Map();
+      const adjacency = new Map(); // from → [to]
+
+      for (const task of phaseTasks) {
+        inDegree.set(task.id, 0);
+        adjacency.set(task.id, []);
+      }
+
+      for (const task of phaseTasks) {
+        const deps = Array.isArray(task.depends) ? task.depends : [];
+        for (const depId of deps) {
+          // 只看同一 Phase 内的依赖
+          if (phaseTaskIds.has(depId)) {
+            adjacency.get(depId).push(task.id);
+            inDegree.set(task.id, (inDegree.get(task.id) || 0) + 1);
+          }
+        }
+      }
+
+      // Kahn's Algorithm
+      const queue = [];
+      for (const task of phaseTasks) {
+        if ((inDegree.get(task.id) || 0) === 0) {
+          queue.push(task.id);
+        }
+      }
+
+      const sorted = [];
+      while (queue.length > 0) {
+        const current = queue.shift();
+        sorted.push(current);
+        for (const neighbor of (adjacency.get(current) || [])) {
+          const deg = (inDegree.get(neighbor) || 1) - 1;
+          inDegree.set(neighbor, deg);
+          if (deg === 0) {
+            queue.push(neighbor);
+          }
+        }
+      }
+
+      // 有环降级：未排入的节点追加到末尾（保持原始顺序）
+      if (sorted.length < phaseTasks.length) {
+        const sortedSet = new Set(sorted);
+        for (const task of phaseTasks) {
+          if (!sortedSet.has(task.id)) {
+            sorted.push(task.id);
+          }
+        }
+      }
+
+      // 按排序后的顺序重建任务数组
+      const taskById = new Map(phaseTasks.map(t => [t.id, t]));
+      result.set(phase.id, sorted.map(id => taskById.get(id)));
+    });
+
+    return result;
+  }
+
+  /**
+   * 重心排序（Barycenter Heuristic）
+   * 每个节点的"重心"= 它所依赖的前置节点的平均 Y 坐标
+   * 按重心值从小到大排列节点，减少连线交叉
+   * @param {Array} nodes - 已排好的节点数组（会被原地修改 topPx）
+   * @param {Array} phases - Phase 布局数组
+   * @param {number} NODE_STEP
+   * @param {number} PHASE_TOP_PAD
+   * @param {number} CANVAS_TOP
+   */
+  _barycentricReorder(nodes, phases, NODE_STEP, PHASE_TOP_PAD, CANVAS_TOP) {
+    // 建立 taskId → node 的映射
+    const nodeByTaskId = new Map();
+    for (const node of nodes) {
+      nodeByTaskId.set(node.task.id, node);
+    }
+
+    // 按 phase 分组
+    const phaseGroups = new Map();
+    for (const node of nodes) {
+      const phaseId = node.phase.id;
+      if (!phaseGroups.has(phaseId)) phaseGroups.set(phaseId, []);
+      phaseGroups.get(phaseId).push(node);
+    }
+
+    // 对每个 phase（除了第一个），按重心排序
+    for (const [phaseId, groupNodes] of phaseGroups) {
+      if (groupNodes.length <= 1) continue;
+
+      // 计算每个节点的重心
+      const barycenters = [];
+      let hasDeps = false;
+
+      for (const node of groupNodes) {
+        const deps = Array.isArray(node.task.depends) ? node.task.depends : [];
+        const depYs = [];
+        for (const depId of deps) {
+          const depNode = nodeByTaskId.get(depId);
+          if (depNode) {
+            depYs.push(depNode.topPx);
+          }
+        }
+
+        if (depYs.length > 0) {
+          hasDeps = true;
+          const avgY = depYs.reduce((sum, y) => sum + y, 0) / depYs.length;
+          barycenters.push({ node, barycenter: avgY });
+        } else {
+          // 没有依赖的节点保持当前位置作为重心
+          barycenters.push({ node, barycenter: node.topPx });
+        }
+      }
+
+      // 只有当该 phase 中有节点具有跨 phase 依赖时才重排
+      if (!hasDeps) continue;
+
+      // 按重心排序
+      barycenters.sort((a, b) => a.barycenter - b.barycenter);
+
+      // 重新分配 Y 坐标（保持同一 phase 内的间距不变）
+      barycenters.forEach((entry, index) => {
+        entry.node.topPx = CANVAS_TOP + PHASE_TOP_PAD + index * NODE_STEP;
+      });
+    }
   }
 
   normalizePhases() {

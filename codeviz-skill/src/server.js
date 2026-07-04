@@ -13,11 +13,11 @@ const { inferProgress } = require('./inferencer');
 const PORT = 7878;
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
 
-function createProjectPayload(project, options = {}) {
+async function createProjectPayload(project, options = {}) {
   const { useGit = true, useFiles = true } = options;
   const content = fs.readFileSync(project.tasksPath, 'utf-8');
   const { phases, tasks } = parseTasksMd(content);
-  const inferred = inferProgress(tasks, project.root, { useGit, useFiles });
+  const inferred = await inferProgress(tasks, project.root, { useGit, useFiles });
   const stats = getStats(inferred);
 
   return {
@@ -34,7 +34,7 @@ function createProjectPayload(project, options = {}) {
 function createServer(projectManager) {
   const clients = new Set(); // WebSocket 客户端
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
 
@@ -52,7 +52,7 @@ function createServer(projectManager) {
         return;
       }
       try {
-        const payload = createProjectPayload(project);
+        const payload = await createProjectPayload(project);
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify(payload));
       } catch (e) {
@@ -88,7 +88,7 @@ function createServer(projectManager) {
         return;
       }
       try {
-        const payload = createProjectPayload(project);
+        const payload = await createProjectPayload(project);
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify(payload));
       } catch (e) {

@@ -3,35 +3,78 @@
  * 零依赖，用 child_process 调 git 命令
  */
 
-const { execSync } = require('child_process');
+const { execFile } = require('child_process');
 const path = require('path');
+
+/**
+ * 内存缓存：key 为 projectRoot，value 为 { data, ts }
+ * @type {Map<string, {data: Array, ts: number}>}
+ */
+const _commitCache = new Map();
+
+/** 缓存有效期（毫秒） */
+const CACHE_TTL = 5000;
+
+/**
+ * 清除指定项目的 commit 缓存
+ * @param {string} projectRoot - 项目根目录
+ */
+function clearCommitCache(projectRoot) {
+  _commitCache.delete(projectRoot);
+}
+
+/**
+ * execFile 的 Promise 包装
+ * @param {string} file
+ * @param {string[]} args
+ * @param {Object} options
+ * @returns {Promise<string>}
+ */
+function execFileAsync(file, args, options) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, options, (error, stdout) => {
+      if (error) return reject(error);
+      resolve(stdout);
+    });
+  });
+}
 
 /**
  * 获取项目最近 N 条 commit
  * @param {string} projectRoot - 项目根目录
  * @param {number} limit - 最多取多少条
- * @returns {Array<{hash: string, message: string, author: string, date: string, files: string[]}>}
+ * @returns {Promise<Array<{hash: string, message: string, author: string, date: string, files: string[]}>>}
  */
-function getRecentCommits(projectRoot, limit = 50) {
-  try {
-    // 一次性获取 commit 列表以及每个 commit 改动的文件，避免多次执行 git show 的同步开销
-    const logOutput = execSync(
-      `git log --name-status --pretty=format:"COMMIT:%H|%an|%ad|%s" -n ${limit}`,
-      { cwd: projectRoot, encoding: 'utf-8', timeout: 5000 }
-    ).trim();
+async function getRecentCommits(projectRoot, limit = 50) {
+  // 检查缓存
+  const cached = _commitCache.get(projectRoot);
+  if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
+    return cached.data;
+  }
 
-    if (!logOutput) return [];
+  try {
+    const logOutput = await execFileAsync(
+      'git',
+      ['log', '--name-status', '--pretty=format:COMMIT:%H|%an|%ad|%s', '-n', String(limit)],
+      { cwd: projectRoot, encoding: 'utf-8', timeout: 5000 }
+    );
+
+    const trimmed = (logOutput || '').trim();
+    if (!trimmed) {
+      _commitCache.set(projectRoot, { data: [], ts: Date.now() });
+      return [];
+    }
 
     const commits = [];
     let currentCommit = null;
 
-    const lines = logOutput.split('\n');
+    const lines = trimmed.split('\n');
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
+      const lineTrimmed = line.trim();
+      if (!lineTrimmed) continue;
 
-      if (trimmed.startsWith('COMMIT:')) {
-        const payload = trimmed.substring(7);
+      if (lineTrimmed.startsWith('COMMIT:')) {
+        const payload = lineTrimmed.substring(7);
         const [hash, author, date, ...msgParts] = payload.split('|');
         currentCommit = {
           hash: hash.trim(),
@@ -43,14 +86,17 @@ function getRecentCommits(projectRoot, limit = 50) {
         commits.push(currentCommit);
       } else if (currentCommit) {
         // --name-status 输出格式例如: "M\tpath/to/file" 或 "A\tpath/to/file"
-        const parts = trimmed.split(/\s+/);
+        const parts = lineTrimmed.split(/\s+/);
         if (parts.length >= 2) {
           currentCommit.files.push(parts[1].trim());
         } else {
-          currentCommit.files.push(trimmed);
+          currentCommit.files.push(lineTrimmed);
         }
       }
     }
+
+    // 写入缓存
+    _commitCache.set(projectRoot, { data: commits, ts: Date.now() });
     return commits;
   } catch (e) {
     // 不是 git 仓库或 git 命令失败
@@ -99,4 +145,4 @@ function isCommitRelatedToTask(commit, task) {
   return false;
 }
 
-module.exports = { getRecentCommits, extractTaskIds, isCommitRelatedToTask };
+module.exports = { getRecentCommits, extractTaskIds, isCommitRelatedToTask, clearCommitCache };

@@ -12,13 +12,13 @@ const { getRecentCommits, isCommitRelatedToTask } = require('./git-tracker');
  * @param {Array} tasks - 解析出来的任务列表
  * @param {string} projectRoot - 项目根目录
  * @param {Object} options - { useGit: true, useFiles: true }
- * @returns {Array} 更新状态后的任务列表
+ * @returns {Promise<Array>} 更新状态后的任务列表
  */
-function inferProgress(tasks, projectRoot, options = {}) {
+async function inferProgress(tasks, projectRoot, options = {}) {
   const { useGit = true, useFiles = true } = options;
 
   // 先拿一次 git commits，复用
-  const commits = useGit ? getRecentCommits(projectRoot, 100) : [];
+  const commits = useGit ? await getRecentCommits(projectRoot, 100) : [];
 
   return tasks.map(task => {
     const inferred = { ...task };

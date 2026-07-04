@@ -49,10 +49,10 @@ function testSpecKitListFormat() {
   assert.deepStrictEqual(tasks[2].depends, ['T001', 'T002']);
 }
 
-function testProjectPayload() {
+async function testProjectPayload() {
   const manager = new ProjectManager();
   const project = manager.addProject(exampleRoot);
-  const payload = createProjectPayload(project, { useGit: false, useFiles: false });
+  const payload = await createProjectPayload(project, { useGit: false, useFiles: false });
 
   assert.strictEqual(payload.projectName, 'examples');
   assert.strictEqual(payload.phases.length, 6);
@@ -71,10 +71,10 @@ function testTemplates() {
   assert(client.includes('applyTheme()'), 'client should support theme switching');
 }
 
-function run() {
+async function run() {
   const tests = [testExampleParsing, testSpecKitListFormat, testProjectPayload, testTemplates];
   for (const test of tests) {
-    test();
+    await test();
     console.log(`✓ ${test.name}`);
   }
   console.log('\nCodeViz smoke tests passed.');

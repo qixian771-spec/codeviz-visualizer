@@ -98,7 +98,7 @@ async function main() {
       // 文件变了，重新解析 + 推断 + 广播
       try {
         if (!fs.existsSync(project.tasksPath)) return;
-        const payload = createProjectPayload(project, { useGit: true, useFiles: true });
+        const payload = await createProjectPayload(project, { useGit: true, useFiles: true });
 
         broadcast({
           type: 'tasks.updated',
