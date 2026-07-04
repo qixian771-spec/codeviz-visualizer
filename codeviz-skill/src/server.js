@@ -108,6 +108,9 @@ function createServer(projectManager) {
         '.json': 'application/json; charset=utf-8'
       };
       res.setHeader('Content-Type', types[ext] || 'application/octet-stream');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.end(content);
     } catch (e) {
       res.statusCode = 404;
