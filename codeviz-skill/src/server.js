@@ -38,8 +38,11 @@ function createServer(projectManager) {
     // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
 
+    const parsedUrl = new URL(req.url, 'http://localhost');
+    const pathname = parsedUrl.pathname;
+
     // API: 获取项目列表
-    if (req.url === '/api/projects') {
+    if (pathname === '/api/projects') {
       const projects = projectManager.listProjects().map(p => ({
         id: p.id,
         name: p.name,
@@ -52,7 +55,7 @@ function createServer(projectManager) {
     }
 
     // API: 获取某项目的任务
-    const projectMatch = req.url.match(/^\/api\/projects\/([^/]+)\/tasks$/);
+    const projectMatch = pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
     if (projectMatch) {
       const projectId = projectMatch[1];
       const project = projectManager.getProject(projectId);
@@ -88,7 +91,9 @@ function createServer(projectManager) {
   });
 
   function serveStatic(req, res) {
-    let filePath = req.url === '/' ? '/index.html' : req.url;
+    const parsedUrl = new URL(req.url, 'http://localhost');
+    const pathname = parsedUrl.pathname;
+    let filePath = pathname === '/' ? '/index.html' : pathname;
     filePath = path.join(TEMPLATES_DIR, filePath);
 
     // 安全：禁止路径穿越
