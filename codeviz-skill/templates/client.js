@@ -213,6 +213,18 @@ class CodeVizClient {
     this.removeEmpty();
 
     const layout = this.computeLayout();
+
+    // 设置 canvas 内容层的最小高度，确保能容纳所有节点
+    const contentHeight = layout.contentHeight || 0;
+    this.dom.phaseLayer.style.height = contentHeight + 'px';
+    this.dom.nodeLayer.style.height = contentHeight + 'px';
+
+    // SVG 也要跟着撑高
+    const flowSvg = this.dom.canvas.querySelector('.flow');
+    if (flowSvg) {
+      flowSvg.style.height = contentHeight + 'px';
+    }
+
     layout.phases.forEach(phaseBox => this.dom.phaseLayer.appendChild(this.createPhaseElement(phaseBox)));
     layout.nodes.forEach((nodeBox, index) => this.dom.nodeLayer.appendChild(this.createNodeElement(nodeBox, index, animateChanges)));
 
@@ -223,66 +235,64 @@ class CodeVizClient {
   computeLayout() {
     const phaseSource = this.normalizePhases();
     const phaseCount = Math.max(phaseSource.length, 1);
-    
-    // 如果阶段数量很多，需要减小间距甚至双排布局以防止溢出和重叠
+
+    // 像素常量
+    const NODE_HEIGHT = 95;       // 节点卡片高度（含 padding）
+    const NODE_GAP = 12;          // 节点之间最小垂直间距
+    const NODE_STEP = NODE_HEIGHT + NODE_GAP;  // 每个节点占的垂直空间
+    const PHASE_TOP_PAD = 46;     // Phase 区域内，第一个节点距顶部（留空给 label）
+    const PHASE_BOTTOM_PAD = 20;  // Phase 区域底部留白
+    const CANVAS_TOP = 10;        // 距 canvas 顶部的初始间距
+
+    // 水平布局：用百分比（简单且响应式）
     const gapPercent = phaseCount > 6 ? 1 : (phaseCount > 4 ? 2 : 3);
     const side = 1;
-    // 确保宽度至少有 5%，防止负宽崩溃
     const widthPercent = Math.max(5, (100 - side * 2 - gapPercent * (phaseCount - 1)) / phaseCount);
 
     const phases = [];
     const nodes = [];
-
-    // 如果阶段极多，使用两排排版以保障可用空间
-    const multiRowLayout = phaseCount > 5;
+    let maxContentBottom = 0;
 
     phaseSource.forEach((phase, phaseIndex) => {
-      let top = 6;
-      let height = 88;
-      let left = side + phaseIndex * (widthPercent + gapPercent);
-
-      if (multiRowLayout) {
-        // 双排排版：奇数排上，偶数排下（或前一半上，后一半下）
-        const half = Math.ceil(phaseCount / 2);
-        if (phaseIndex >= half) {
-          top = 50;
-          height = 44;
-          left = side + (phaseIndex - half) * (widthPercent * 2 + gapPercent * 2);
-        } else {
-          top = 4;
-          height = 44;
-          left = side + phaseIndex * (widthPercent * 2 + gapPercent * 2);
-        }
-      }
-
+      const left = side + phaseIndex * (widthPercent + gapPercent);
       const phaseTasks = this.tasks.filter(task => (task.phase || 'phase-1') === phase.id);
       const phaseStatus = this.getPhaseStatus(phaseTasks);
+      const taskCount = Math.max(phaseTasks.length, 1);
 
-      const actualWidth = multiRowLayout ? widthPercent * 2 + gapPercent : widthPercent;
-      phases.push({ ...phase, left, top, width: actualWidth, height, status: phaseStatus });
+      // Phase 高度由任务数决定（像素）
+      const phaseContentHeight = PHASE_TOP_PAD + taskCount * NODE_STEP + PHASE_BOTTOM_PAD;
 
-      const maxRows = Math.max(phaseTasks.length, 1);
-      const nodeTopMin = top + 8;
-      const nodeTopMax = top + height - 16;
-      const step = maxRows > 1 ? (nodeTopMax - nodeTopMin) / (maxRows - 1) : 0;
-      
-      // 自适应的 Node 左边距
-      const nodeLeft = left + Math.max(1.0, Math.min(3.0, actualWidth * 0.15));
+      phases.push({
+        ...phase,
+        left,
+        topPx: CANVAS_TOP,
+        width: widthPercent,
+        heightPx: phaseContentHeight,
+        status: phaseStatus
+      });
+
+      // 节点左偏移（百分比）
+      const nodeLeft = left + Math.max(1.0, Math.min(3.0, widthPercent * 0.15));
 
       phaseTasks.forEach((task, taskIndex) => {
-        // 如果节点过多，限制 stagger top 以免超出
-        const staggerTop = maxRows === 1 ? top + height * 0.42 : nodeTopMin + taskIndex * step;
+        const nodeTopPx = CANVAS_TOP + PHASE_TOP_PAD + taskIndex * NODE_STEP;
         nodes.push({
           task,
           phase,
           left: nodeLeft,
-          top: Math.max(top + 6, Math.min(staggerTop, top + height - 16)),
+          topPx: nodeTopPx,
           delay: phaseIndex * 90 + taskIndex * 55
         });
+        maxContentBottom = Math.max(maxContentBottom, nodeTopPx + NODE_HEIGHT);
       });
+
+      maxContentBottom = Math.max(maxContentBottom, CANVAS_TOP + phaseContentHeight);
     });
 
-    return { phases, nodes };
+    // 内容总高度（给 canvas 滚动用）
+    const contentHeight = maxContentBottom + 40; // 底部多留 40px
+
+    return { phases, nodes, contentHeight };
   }
 
   normalizePhases() {
@@ -314,9 +324,9 @@ class CodeVizClient {
     const el = document.createElement('div');
     el.className = `phase-zone ${phaseBox.status === 'complete' ? 'complete' : phaseBox.status === 'active' ? 'active' : phaseBox.status === 'blocked' ? 'blocked' : ''}`;
     el.style.left = `${phaseBox.left}%`;
-    el.style.top = `${phaseBox.top}%`;
+    el.style.top = `${phaseBox.topPx}px`;
     el.style.width = `${phaseBox.width}%`;
-    el.style.height = `${phaseBox.height}%`;
+    el.style.height = `${phaseBox.heightPx}px`;
     el.innerHTML = `<span class="phase-zone-label"><span class="phase-dot"></span>${this.escape(this.formatPhaseLabel(phaseBox.name))}</span>`;
     return el;
   }
@@ -332,7 +342,7 @@ class CodeVizClient {
     el.dataset.id = task.id;
     el.title = this.buildNodeTitle(task);
     el.style.left = `${nodeBox.left}%`;
-    el.style.top = `${nodeBox.top}%`;
+    el.style.top = `${nodeBox.topPx}px`;
     el.style.animationDelay = `${nodeBox.delay || index * 45}ms`;
 
     const meta = this.getTaskMeta(task);
