@@ -378,6 +378,8 @@
     .flow-particle { fill: var(--flow); filter: drop-shadow(0 0 4px currentColor); }
     .flow-particle.active { fill: var(--progress-border); }
     .flow-particle.error { fill: var(--error-border); }
+    .flow-line.dim { opacity: 0.08 !important; }
+    .flow-line.hl { opacity: 1 !important; stroke-width: 2.6; filter: drop-shadow(0 0 6px currentColor); }
 
     .phase-zone {
       position: absolute;
@@ -670,6 +672,6 @@
       }
     });
   </script>
-  <script src="/client.js?v=7"></script>
+  <script src="/client.js?v=8"></script>
 </body>
 </html>

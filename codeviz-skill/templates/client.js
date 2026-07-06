@@ -17,6 +17,19 @@ class CodeVizClient {
     this.resizeTimer = null;
     this.themeChoice = localStorage.getItem('codeviz-theme') || 'system';
 
+    // Zoom/pan state. The #viewport layer is CSS-transformed by translate()+scale().
+    this.scale = 1;
+    this.translateX = 0;
+    this.translateY = 0;
+    this.minScale = 0.2;
+    this.maxScale = 2.5;
+    this.contentHeight = 0;
+    this.isPanning = false;
+    this._panStart = null;
+    this._minimapDragging = false;
+    this._transformScheduled = false;
+    this._hoveredTaskId = null;
+
     this.dom = {
       projectSelect: document.getElementById('project-select'),
       stats: document.getElementById('stats'),
@@ -25,12 +38,20 @@ class CodeVizClient {
       conn: document.getElementById('conn'),
       status: document.getElementById('status'),
       canvas: document.getElementById('canvas'),
+      viewport: document.getElementById('viewport'),
       phaseLayer: document.getElementById('phase-layer'),
       nodeLayer: document.getElementById('node-layer'),
       linesGroup: document.getElementById('flow-lines'),
       particlesGroup: document.getElementById('flow-particles'),
       error: document.getElementById('error'),
-      themeToggle: document.getElementById('theme-toggle')
+      themeToggle: document.getElementById('theme-toggle'),
+      zoomIn: document.getElementById('zoom-in'),
+      zoomOut: document.getElementById('zoom-out'),
+      zoomReset: document.getElementById('zoom-reset'),
+      zoomLevel: document.getElementById('zoom-level'),
+      minimap: document.getElementById('minimap'),
+      minimapCanvas: document.getElementById('minimap-canvas'),
+      minimapViewport: document.getElementById('minimap-viewport')
     };
   }
 
@@ -72,7 +93,123 @@ class CodeVizClient {
         } else {
           this.drawLines();
         }
+        this.updateMinimap();
       }, 150);
+    });
+
+    this.bindZoomPan();
+    this.bindMinimap();
+    this.bindNodeHover();
+  }
+
+  // ---- Zoom / Pan ----
+
+  bindZoomPan() {
+    const canvas = this.dom.canvas;
+    if (!canvas) return;
+
+    canvas.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+      this.zoomAt(px, py, factor);
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', (event) => {
+      if (event.button !== 0) return;
+      if (event.target.closest('.node')) return;
+      if (event.target.closest('.minimap') || event.target.closest('.zoom-controls')) return;
+      this.isPanning = true;
+      this._panStart = {
+        x: event.clientX,
+        y: event.clientY,
+        tx: this.translateX,
+        ty: this.translateY
+      };
+      canvas.classList.add('panning');
+      event.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (event) => {
+      if (!this.isPanning || !this._panStart) return;
+      this.translateX = this._panStart.tx + (event.clientX - this._panStart.x);
+      this.translateY = this._panStart.ty + (event.clientY - this._panStart.y);
+      this.clampTranslate();
+      this.applyTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (this.isPanning) {
+        this.isPanning = false;
+        this._panStart = null;
+        canvas.classList.remove('panning');
+      }
+    });
+
+    canvas.classList.add('pannable');
+
+    if (this.dom.zoomIn) this.dom.zoomIn.addEventListener('click', () => this.zoomByButton(1.2));
+    if (this.dom.zoomOut) this.dom.zoomOut.addEventListener('click', () => this.zoomByButton(1 / 1.2));
+    if (this.dom.zoomReset) this.dom.zoomReset.addEventListener('click', () => this.resetView());
+  }
+
+  zoomByButton(factor) {
+    const canvas = this.dom.canvas;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    this.zoomAt(rect.width / 2, rect.height / 2, factor);
+  }
+
+  // Zoom keeping the point (px, py) in canvas space fixed on screen.
+  zoomAt(px, py, factor) {
+    const newScale = Math.max(this.minScale, Math.min(this.maxScale, this.scale * factor));
+    if (newScale === this.scale) return;
+    const wx = (px - this.translateX) / this.scale;
+    const wy = (py - this.translateY) / this.scale;
+    this.scale = newScale;
+    this.translateX = px - wx * this.scale;
+    this.translateY = py - wy * this.scale;
+    this.clampTranslate();
+    this.applyTransform();
+  }
+
+  resetView() {
+    this.scale = 1;
+    this.translateX = 0;
+    this.translateY = 0;
+    this.applyTransform();
+  }
+
+  clampTranslate() {
+    const canvas = this.dom.canvas;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const contentW = rect.width * this.scale;
+    const contentH = Math.max(this.contentHeight, rect.height) * this.scale;
+    const margin = 120;
+    const minTx = Math.min(0, rect.width - contentW) - margin;
+    const maxTx = margin;
+    const minTy = Math.min(0, rect.height - contentH) - margin;
+    const maxTy = margin;
+    this.translateX = Math.max(minTx, Math.min(maxTx, this.translateX));
+    this.translateY = Math.max(minTy, Math.min(maxTy, this.translateY));
+  }
+
+  applyTransform() {
+    if (this._transformScheduled) return;
+    this._transformScheduled = true;
+    requestAnimationFrame(() => {
+      this._transformScheduled = false;
+      if (this.dom.viewport) {
+        this.dom.viewport.style.transform =
+          `translate(${this.translateX}px, ${this.translateY}px) scale(${this.scale})`;
+      }
+      if (this.dom.zoomLevel) {
+        this.dom.zoomLevel.textContent = `${Math.round(this.scale * 100)}%`;
+      }
+      this.updateMinimapViewport();
     });
   }
 
@@ -223,6 +360,7 @@ class CodeVizClient {
 
     // 设置 canvas 内容层的最小高度，确保能容纳所有节点
     const contentHeight = layout.contentHeight || 0;
+    this.contentHeight = contentHeight;
     this.dom.canvas.style.minHeight = contentHeight + 'px';
     this.dom.phaseLayer.style.height = contentHeight + 'px';
     this.dom.nodeLayer.style.height = contentHeight + 'px';
@@ -236,7 +374,10 @@ class CodeVizClient {
     layout.phases.forEach(phaseBox => this.dom.phaseLayer.appendChild(this.createPhaseElement(phaseBox)));
     layout.nodes.forEach((nodeBox, index) => this.dom.nodeLayer.appendChild(this.createNodeElement(nodeBox, index, animateChanges)));
 
-    requestAnimationFrame(() => this.drawLines());
+    requestAnimationFrame(() => {
+      this.drawLines();
+      this.updateMinimap();
+    });
     this.lastStatusById = new Map(this.tasks.map(task => [task.id, this.normalizeStatus(task.status)]));
   }
 
@@ -574,6 +715,27 @@ class CodeVizClient {
     return el;
   }
 
+  statusColor(status) {
+    return {
+      pending: '#52525b',
+      'in-progress': '#f59e0b',
+      done: '#10b981',
+      error: '#ef4444'
+    }[this.normalizeStatus(status)] || '#52525b';
+  }
+
+  // Lazily ensure a <defs> exists inside #flow-lines' parent SVG to hold per-line gradients.
+  ensureLineDefs() {
+    const svg = this.dom.linesGroup ? this.dom.linesGroup.ownerSVGElement : null;
+    if (!svg) return null;
+    let defs = svg.querySelector('defs.flow-grad-defs');
+    if (!defs) {
+      defs = this.createSvg('defs', { class: 'flow-grad-defs' });
+      svg.insertBefore(defs, svg.firstChild);
+    }
+    return defs;
+  }
+
   drawLines() {
     if (!this.dom.canvas || !this.dom.linesGroup || !this.dom.particlesGroup) return;
     this.clearLines();
@@ -581,6 +743,7 @@ class CodeVizClient {
     const canvasRect = this.dom.canvas.getBoundingClientRect();
     if (!canvasRect.width || !canvasRect.height) return;
 
+    const defs = this.ensureLineDefs();
     let lineIndex = 0;
     const tasksById = new Map(this.tasks.map(task => [task.id, task]));
 
@@ -596,10 +759,14 @@ class CodeVizClient {
 
         const fromRect = fromNode.getBoundingClientRect();
         const toRect = toNode.getBoundingClientRect();
-        const fromX = fromRect.left + fromRect.width / 2 - canvasRect.left;
-        const fromY = fromRect.top + fromRect.height / 2 - canvasRect.top;
-        const toX = toRect.left + toRect.width / 2 - canvasRect.left;
-        const toY = toRect.top + toRect.height / 2 - canvasRect.top;
+        // #viewport is CSS-scaled, so getBoundingClientRect() returns scaled screen
+        // coords. The SVG lives inside #viewport and scales with it, so paths must use
+        // UNSCALED viewport-space coords: subtract translate, then divide by scale.
+        const s = this.scale || 1;
+        const fromX = (fromRect.left + fromRect.width / 2 - canvasRect.left - this.translateX) / s;
+        const fromY = (fromRect.top + fromRect.height / 2 - canvasRect.top - this.translateY) / s;
+        const toX = (toRect.left + toRect.width / 2 - canvasRect.left - this.translateX) / s;
+        const toY = (toRect.top + toRect.height / 2 - canvasRect.top - this.translateY) / s;
         const dx = toX - fromX;
         const cp1x = fromX + dx * 0.52;
         const cp1y = fromY;
@@ -607,13 +774,31 @@ class CodeVizClient {
         const cp2y = toY;
         const d = `M ${fromX} ${fromY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${toX} ${toY}`;
         const status = this.normalizeStatus(toTask.status);
+        const fromStatus = this.normalizeStatus(fromTask.status);
+
+        // Per-line gradient: source status color -> target status color.
+        const gradId = `grad-${lineIndex}`;
+        if (defs) {
+          const grad = this.createSvg('linearGradient', {
+            id: gradId,
+            gradientUnits: 'userSpaceOnUse',
+            x1: String(fromX), y1: String(fromY),
+            x2: String(toX), y2: String(toY)
+          });
+          grad.appendChild(this.createSvg('stop', { offset: '0%', 'stop-color': this.statusColor(fromStatus) }));
+          grad.appendChild(this.createSvg('stop', { offset: '100%', 'stop-color': this.statusColor(status) }));
+          defs.appendChild(grad);
+        }
 
         const path = this.createSvg('path', {
           d,
           id: `flow-${lineIndex}`,
-          class: `flow-line ${status === 'in-progress' ? 'active' : status}`
+          class: `flow-line ${status === 'in-progress' ? 'active' : status}`,
+          'data-from': fromId,
+          'data-to': toTask.id
         });
-        const marker = status === 'error' ? 'url(#arr-error)' : status === 'in-progress' ? 'url(#arr-active)' : status === 'done' ? '' : 'url(#arr-flow)';
+        if (defs) path.style.stroke = `url(#${gradId})`;
+        const marker = status === 'error' ? 'url(#arr-error)' : status === 'in-progress' ? 'url(#arr-active)' : status === 'done' ? 'url(#arr-done)' : 'url(#arr-flow)';
         if (marker) path.setAttribute('marker-end', marker);
         this.dom.linesGroup.appendChild(path);
 
@@ -644,6 +829,9 @@ class CodeVizClient {
   clearLines() {
     if (this.dom.linesGroup) this.dom.linesGroup.innerHTML = '';
     if (this.dom.particlesGroup) this.dom.particlesGroup.innerHTML = '';
+    const svg = this.dom.linesGroup ? this.dom.linesGroup.ownerSVGElement : null;
+    const defs = svg ? svg.querySelector('defs.flow-grad-defs') : null;
+    if (defs) defs.innerHTML = '';
   }
 
   createSvg(tag, attrs) {
@@ -776,6 +964,156 @@ class CodeVizClient {
 
   escapeAttr(value) {
     return this.escape(value).replace(/"/g, '&quot;');
+  }
+
+  // ---- Hover highlight ----
+
+  bindNodeHover() {
+    const layer = this.dom.nodeLayer;
+    if (!layer) return;
+    layer.addEventListener('mouseover', (event) => {
+      const node = event.target.closest('.node');
+      if (!node) return;
+      this.highlightLines(node.dataset.id);
+    });
+    layer.addEventListener('mouseout', (event) => {
+      const node = event.target.closest('.node');
+      if (!node) return;
+      this.clearHighlight();
+    });
+  }
+
+  highlightLines(taskId) {
+    if (!taskId || !this.dom.linesGroup) return;
+    this._hoveredTaskId = taskId;
+    const paths = this.dom.linesGroup.querySelectorAll('.flow-line');
+    paths.forEach(path => {
+      const related = path.getAttribute('data-from') === taskId || path.getAttribute('data-to') === taskId;
+      path.classList.toggle('hl', related);
+      path.classList.toggle('dim', !related);
+    });
+  }
+
+  clearHighlight() {
+    this._hoveredTaskId = null;
+    if (!this.dom.linesGroup) return;
+    this.dom.linesGroup.querySelectorAll('.flow-line').forEach(path => {
+      path.classList.remove('hl', 'dim');
+    });
+  }
+
+  // ---- Minimap ----
+
+  bindMinimap() {
+    const minimap = this.dom.minimap;
+    if (!minimap) return;
+    const jump = (event) => {
+      const rect = minimap.getBoundingClientRect();
+      const mx = event.clientX - rect.left;
+      const my = event.clientY - rect.top;
+      this.minimapJumpTo(mx, my, rect);
+    };
+    minimap.addEventListener('mousedown', (event) => {
+      this._minimapDragging = true;
+      jump(event);
+      event.preventDefault();
+    });
+    window.addEventListener('mousemove', (event) => {
+      if (!this._minimapDragging) return;
+      jump(event);
+    });
+    window.addEventListener('mouseup', () => {
+      this._minimapDragging = false;
+    });
+  }
+
+  // Compute the content bounding box in unscaled viewport space from the node layer.
+  minimapContentBox() {
+    const canvas = this.dom.canvas;
+    const width = canvas ? canvas.clientWidth : 0;
+    const height = Math.max(this.contentHeight, canvas ? canvas.clientHeight : 0);
+    return { width: Math.max(width, 1), height: Math.max(height, 1) };
+  }
+
+  updateMinimap() {
+    const canvasEl = this.dom.minimapCanvas;
+    const layer = this.dom.nodeLayer;
+    if (!canvasEl || !layer) return;
+
+    const box = this.minimapContentBox();
+    const mmW = canvasEl.clientWidth || canvasEl.offsetWidth || 190;
+    const mmH = canvasEl.clientHeight || canvasEl.offsetHeight || 132;
+    const dpr = window.devicePixelRatio || 1;
+    canvasEl.width = Math.round(mmW * dpr);
+    canvasEl.height = Math.round(mmH * dpr);
+    const ctx = canvasEl.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, mmW, mmH);
+
+    const pad = 6;
+    const sx = (mmW - pad * 2) / box.width;
+    const sy = (mmH - pad * 2) / box.height;
+    const scale = Math.min(sx, sy);
+    this._minimapScale = scale;
+    this._minimapPad = pad;
+    this._minimapBox = box;
+
+    const nodes = layer.querySelectorAll('.node');
+    nodes.forEach(node => {
+      const status = node.classList.contains('done') ? 'done'
+        : node.classList.contains('in-progress') ? 'in-progress'
+        : node.classList.contains('error') ? 'error' : 'pending';
+      ctx.fillStyle = this.statusColor(status);
+      const x = pad + node.offsetLeft * scale;
+      const y = pad + node.offsetTop * scale;
+      const w = Math.max(2, node.offsetWidth * scale);
+      const h = Math.max(2, node.offsetHeight * scale);
+      ctx.fillRect(x, y, w, h);
+    });
+
+    this.updateMinimapViewport();
+  }
+
+  updateMinimapViewport() {
+    const vp = this.dom.minimapViewport;
+    const canvas = this.dom.canvas;
+    if (!vp || !canvas || !this._minimapScale) return;
+
+    const scale = this._minimapScale;
+    const pad = this._minimapPad || 6;
+    const s = this.scale || 1;
+    const rect = canvas.getBoundingClientRect();
+
+    // Visible region in unscaled viewport space.
+    const viewX = -this.translateX / s;
+    const viewY = -this.translateY / s;
+    const viewW = rect.width / s;
+    const viewH = rect.height / s;
+
+    vp.style.left = (pad + viewX * scale) + 'px';
+    vp.style.top = (pad + viewY * scale) + 'px';
+    vp.style.width = (viewW * scale) + 'px';
+    vp.style.height = (viewH * scale) + 'px';
+  }
+
+  minimapJumpTo(mx, my, rect) {
+    const canvas = this.dom.canvas;
+    if (!canvas || !this._minimapScale) return;
+    const scale = this._minimapScale;
+    const pad = this._minimapPad || 6;
+    const s = this.scale || 1;
+
+    // Minimap point -> unscaled content coordinate.
+    const contentX = (mx - pad) / scale;
+    const contentY = (my - pad) / scale;
+
+    // Center the viewport on that content point.
+    const canvasRect = canvas.getBoundingClientRect();
+    this.translateX = canvasRect.width / 2 - contentX * s;
+    this.translateY = canvasRect.height / 2 - contentY * s;
+    this.clampTranslate();
+    this.applyTransform();
   }
 }
 
