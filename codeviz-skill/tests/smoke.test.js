@@ -71,8 +71,107 @@ function testTemplates() {
   assert(client.includes('applyTheme()'), 'client should support theme switching');
 }
 
+// --- Regression tests for confirmed bugs (see review) ---
+
+function testInlineFilesDependsNoCollision() {
+  // Bug 1: inline "files: a.ts depends: T002" must not let files swallow depends,
+  // and the display name must be stripped clean of both clauses.
+  const content = `# Tasks: X
+## Phase 1
+### T001 - Init files: a.ts depends: T002
+- [ ] do
+### T002 - Next files: c.ts depends: T001
+- [ ] do
+`;
+  const { tasks } = parseTasksMd(content);
+  assert.deepStrictEqual(tasks[0].files, ['a.ts'], 'T001 files should be [a.ts]');
+  assert.deepStrictEqual(tasks[0].depends, ['T002'], 'T001 depends should be [T002]');
+  assert.strictEqual(tasks[0].name, 'Init', 'T001 name should be clean');
+  assert.deepStrictEqual(tasks[1].files, ['c.ts'], 'T002 files should be [c.ts]');
+  assert.deepStrictEqual(tasks[1].depends, ['T001'], 'T002 depends should be [T001]');
+  assert.strictEqual(tasks[1].name, 'Next', 'T002 name should be clean');
+}
+
+function testDuplicateTaskIdDedup() {
+  // Bug 4: duplicate task IDs must be deduped so nodes stay uniquely addressable.
+  const content = `# Tasks: X
+## Phase 1
+### T001 - A
+- [ ] x
+### T001 - B
+- [ ] y
+### T002 - C
+- [ ] z
+`;
+  const { tasks } = parseTasksMd(content);
+  assert.deepStrictEqual(tasks.map(t => t.id), ['T001', 'T001-2', 'T002'], 'duplicate ids should be suffixed');
+  const ids = new Set(tasks.map(t => t.id));
+  assert.strictEqual(ids.size, tasks.length, 'all task ids should be unique');
+}
+
+function testNonPhaseHeadingIgnored() {
+  // Bug 3: a bare "## Overview" with no tasks must not pollute the phase list,
+  // but "## Phase N" and bare headings that DO have tasks must still register.
+  const withOverview = parseTasksMd(`# Tasks: X
+## Overview
+Some intro text.
+## Phase 1: Setup
+### T001 - Foo
+- [ ] do it
+`);
+  assert.strictEqual(withOverview.phases.length, 1, 'Overview (no tasks) should not become a phase');
+  assert.strictEqual(withOverview.phases[0].name, 'Setup');
+  assert.strictEqual(withOverview.tasks[0].phase, withOverview.phases[0].id);
+
+  const bareWithTasks = parseTasksMd(`# Tasks: X
+## Setup
+### T001 - Foo
+- [ ] do it
+## Deploy
+### T002 - Bar
+- [ ] do it
+`);
+  assert.strictEqual(bareWithTasks.phases.length, 2, 'bare headings with tasks should register');
+  assert.deepStrictEqual(bareWithTasks.phases.map(p => p.name), ['Setup', 'Deploy']);
+
+  const emptyExplicit = parseTasksMd(`# Tasks: X
+## Phase 1: Setup
+## Phase 2: Deploy
+### T001 - Foo
+- [ ] do it
+`);
+  assert.strictEqual(emptyExplicit.phases.length, 2, 'explicit ## Phase N should register even when empty');
+  assert.strictEqual(emptyExplicit.tasks[0].phase, 'phase-2', 'task should land in phase-2');
+}
+
+function testDuplicatePhaseNamesDistinctIds() {
+  // Bug 2 (parser side): two same-named phases must still get distinct ids so the
+  // frontend can label them by id instead of colliding on name.
+  const { phases } = parseTasksMd(`# Tasks: X
+## Phase 1: Setup
+### T001 - A
+- [ ] x
+## Phase 2: Setup
+### T002 - B
+- [ ] y
+`);
+  assert.strictEqual(phases.length, 2, 'two Setup phases should both register');
+  assert.deepStrictEqual(phases.map(p => p.name), ['Setup', 'Setup']);
+  const ids = new Set(phases.map(p => p.id));
+  assert.strictEqual(ids.size, 2, 'phase ids must be unique even when names match');
+}
+
 async function run() {
-  const tests = [testExampleParsing, testSpecKitListFormat, testProjectPayload, testTemplates];
+  const tests = [
+    testExampleParsing,
+    testSpecKitListFormat,
+    testProjectPayload,
+    testTemplates,
+    testInlineFilesDependsNoCollision,
+    testDuplicateTaskIdDedup,
+    testNonPhaseHeadingIgnored,
+    testDuplicatePhaseNamesDistinctIds
+  ];
   for (const test of tests) {
     await test();
     console.log(`✓ ${test.name}`);

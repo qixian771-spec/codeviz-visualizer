@@ -15,6 +15,7 @@ function parseTasksMd(content) {
   let currentPhase = null;
   let currentTask = null;
   let taskIdCounter = 1;
+  const seenIds = new Set();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -23,16 +24,25 @@ function parseTasksMd(content) {
     if (!trimmed || trimmed.startsWith('<!--')) continue;
 
     // Phase 标题：## Phase X: xxx、## 阶段名。跳过二级标题里的 Tasks 总标题。
-    const phaseMatch = trimmed.match(/^##\s+(?:Phase\s+\d+\s*[:：-]?\s*)?(.+)$/i);
-    if (phaseMatch && !/^tasks\b/i.test(phaseMatch[1].trim())) {
-      currentPhase = {
-        id: `phase-${phases.length + 1}`,
-        name: phaseMatch[1].trim(),
-        tasks: []
-      };
-      phases.push(currentPhase);
-      currentTask = null;
-      continue;
+    // 显式 "## Phase N" 立即登记；裸标题（如 ## Overview）延迟登记，
+    // 只有当其下真的解析出任务时才计入 phases，避免说明段落污染阶段图。
+    const explicitPhaseMatch = trimmed.match(/^##\s+Phase\s+\d+\s*[:：-]?\s*(.*)$/i);
+    const genericHeadingMatch = trimmed.match(/^##\s+(.+)$/);
+    if (explicitPhaseMatch || genericHeadingMatch) {
+      const headingName = (explicitPhaseMatch ? explicitPhaseMatch[1] : genericHeadingMatch[1]).trim();
+      if (!/^tasks\b/i.test(headingName)) {
+        currentPhase = {
+          id: `phase-${phases.length + 1}`,
+          name: headingName || trimmed.replace(/^##\s+/, '').trim(),
+          tasks: [],
+          committed: false
+        };
+        if (explicitPhaseMatch) {
+          commitPhase(currentPhase, phases);
+        }
+        currentTask = null;
+        continue;
+      }
     }
 
     // 标题式任务：### T001 - xxx 或 ### xxx
@@ -45,8 +55,13 @@ function parseTasksMd(content) {
       currentTask = createTask({ rawId, rawName, checkbox, prefixFlag, currentPhase, line: i + 1, counter: taskIdCounter });
       taskIdCounter = currentTask._nextCounter;
       delete currentTask._nextCounter;
+      currentTask.id = dedupeId(currentTask.id, seenIds);
       tasks.push(currentTask);
-      if (currentPhase) currentPhase.tasks.push(currentTask);
+      if (currentPhase) {
+        commitPhase(currentPhase, phases);
+        currentTask.phase = currentPhase.id;
+        currentPhase.tasks.push(currentTask);
+      }
       continue;
     }
 
@@ -60,8 +75,13 @@ function parseTasksMd(content) {
       currentTask = createTask({ rawId, rawName, checkbox, prefixFlag, currentPhase, line: i + 1, counter: taskIdCounter });
       taskIdCounter = currentTask._nextCounter;
       delete currentTask._nextCounter;
+      currentTask.id = dedupeId(currentTask.id, seenIds);
       tasks.push(currentTask);
-      if (currentPhase) currentPhase.tasks.push(currentTask);
+      if (currentPhase) {
+        commitPhase(currentPhase, phases);
+        currentTask.phase = currentPhase.id;
+        currentPhase.tasks.push(currentTask);
+      }
       continue;
     }
 
@@ -94,6 +114,29 @@ function parseTasksMd(content) {
   return { phases, tasks };
 }
 
+function commitPhase(phase, phases) {
+  if (phase && !phase.committed) {
+    phase.committed = true;
+    phase.id = `phase-${phases.length + 1}`;
+    phases.push(phase);
+  }
+}
+
+function dedupeId(id, seenIds) {
+  if (!seenIds.has(id)) {
+    seenIds.add(id);
+    return id;
+  }
+  let suffix = 2;
+  let candidate = `${id}-${suffix}`;
+  while (seenIds.has(candidate)) {
+    suffix += 1;
+    candidate = `${id}-${suffix}`;
+  }
+  seenIds.add(candidate);
+  return candidate;
+}
+
 function createTask({ rawId, rawName, checkbox, prefixFlag, currentPhase, line, counter }) {
   const taskId = rawId ? `T${rawId.padStart(3, '0')}` : `T${String(counter).padStart(3, '0')}`;
   let taskName = String(rawName || '').trim();
@@ -104,11 +147,14 @@ function createTask({ rawId, rawName, checkbox, prefixFlag, currentPhase, line, 
     .replace(/^[-—:]\s*/, '')
     .trim();
 
-  const fileHints = extractInlineList(taskName, /\bfiles?\s*[:：]\s*([^;；]+)/i);
-  const depHints = extractInlineList(taskName, /\bdepends?\s*[:：]\s*([^;；]+)/i);
+  // Stop each inline field at the next field keyword (files:/depends:) so
+  // "files: a.ts depends: T002" doesn't let files swallow the depends clause.
+  const INLINE_VALUE = '((?:(?!\\bfiles?\\s*[:：]|\\bdepends?\\s*[:：])[^;；)])+)';
+  const fileHints = extractInlineList(taskName, new RegExp('\\bfiles?\\s*[:：]\\s*' + INLINE_VALUE, 'i'));
+  const depHints = extractInlineList(taskName, new RegExp('\\bdepends?\\s*[:：]\\s*' + INLINE_VALUE, 'i'));
+  // Strip every inline files:/depends: clause from the display name.
   taskName = taskName
-    .replace(/\s*\(?\bfiles?\s*[:：]\s*[^;；)]+\)?/i, '')
-    .replace(/\s*\(?\bdepends?\s*[:：]\s*[^;；)]+\)?/i, '')
+    .replace(new RegExp('\\s*\\(?\\b(?:files?|depends?)\\s*[:：]\\s*' + INLINE_VALUE + '\\)?', 'gi'), '')
     .trim();
 
   const isChecked = checkbox && checkbox.toLowerCase() === 'x';

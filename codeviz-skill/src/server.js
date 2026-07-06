@@ -109,7 +109,19 @@ function createServer(projectManager) {
       socket.destroy();
       return;
     }
-    handleWebSocket(req, socket);
+    // Only accept version 13 (RFC 6455); reject anything else cleanly.
+    const version = req.headers['sec-websocket-version'];
+    const key = req.headers['sec-websocket-key'];
+    if (!key || (version && String(version) !== '13')) {
+      socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    try {
+      handleWebSocket(req, socket);
+    } catch (e) {
+      try { socket.destroy(); } catch (err) {}
+    }
   });
 
   function serveStatic(req, res) {
@@ -160,14 +172,96 @@ function createServer(projectManager) {
       'Sec-WebSocket-Accept: ' + accept + '\r\n\r\n'
     );
 
-    const client = { socket };
+    const client = { socket, isAlive: true };
     clients.add(client);
 
-    socket.on('end', () => clients.delete(client));
-    socket.on('error', () => clients.delete(client));
+    const cleanup = () => {
+      clients.delete(client);
+      if (client.pingTimer) {
+        clearInterval(client.pingTimer);
+        client.pingTimer = null;
+      }
+    };
 
-    // 监听客户端消息（暂不处理）
-    socket.on('data', () => {});
+    socket.on('end', cleanup);
+    socket.on('close', cleanup);
+    socket.on('error', cleanup);
+
+    // 解析客户端帧：响应 ping、处理 close，其余数据帧忽略。
+    let buffer = Buffer.alloc(0);
+    socket.on('data', (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      buffer = consumeFrames(buffer, socket, client, cleanup);
+    });
+
+    // 心跳：每 30s ping 一次；上一轮未回 pong 的连接判定为死连接并清理。
+    client.pingTimer = setInterval(() => {
+      if (!client.isAlive) {
+        cleanup();
+        try { socket.destroy(); } catch (e) {}
+        return;
+      }
+      client.isAlive = false;
+      try {
+        sendControlFrame(socket, 0x9); // ping
+      } catch (e) {
+        cleanup();
+      }
+    }, 30000);
+    if (client.pingTimer.unref) client.pingTimer.unref();
+  }
+
+  // 逐帧消费缓冲区，返回剩余未解析的字节。只处理客户端 -> 服务端方向。
+  function consumeFrames(buffer, socket, client, cleanup) {
+    while (buffer.length >= 2) {
+      const opcode = buffer[0] & 0x0f;
+      const masked = (buffer[1] & 0x80) === 0x80;
+      let len = buffer[1] & 0x7f;
+      let offset = 2;
+
+      if (len === 126) {
+        if (buffer.length < offset + 2) break;
+        len = buffer.readUInt16BE(offset);
+        offset += 2;
+      } else if (len === 127) {
+        if (buffer.length < offset + 8) break;
+        // 忽略高 32 位（进度消息不可能这么大）
+        len = buffer.readUInt32BE(offset + 4);
+        offset += 8;
+      }
+
+      const maskLen = masked ? 4 : 0;
+      if (buffer.length < offset + maskLen + len) break; // 帧未接收完整
+
+      // 跳过 payload（我们不消费客户端数据内容），但需解析控制帧
+      const frameEnd = offset + maskLen + len;
+
+      if (opcode === 0x8) {
+        // close：回一个 close 并清理
+        try { sendControlFrame(socket, 0x8); } catch (e) {}
+        cleanup();
+        try { socket.end(); } catch (e) {}
+        return Buffer.alloc(0);
+      } else if (opcode === 0x9) {
+        // ping：回 pong
+        try { sendControlFrame(socket, 0xA); } catch (e) {}
+      } else if (opcode === 0xA) {
+        // pong：标记存活
+        client.isAlive = true;
+      }
+      // 其余（文本/二进制）忽略
+
+      buffer = buffer.slice(frameEnd);
+    }
+    return buffer;
+  }
+
+  // 发送无 payload 的控制帧（ping/pong/close）。
+  function sendControlFrame(socket, opcode) {
+    const header = Buffer.alloc(2);
+    header[0] = 0x80 | (opcode & 0x0f); // FIN + opcode
+    header[1] = 0x00; // 无 payload、服务端不加 mask
+    socket.write(header);
   }
 
   // 广播消息给所有客户端
@@ -204,6 +298,20 @@ function createServer(projectManager) {
 
     socket.write(Buffer.concat([header, payload]));
   }
+
+  // 关闭服务前先销毁所有跟踪的 WebSocket 连接，否则残留连接会让 server.close() 挂起。
+  const originalClose = server.close.bind(server);
+  server.close = (cb) => {
+    for (const client of clients) {
+      if (client.pingTimer) {
+        clearInterval(client.pingTimer);
+        client.pingTimer = null;
+      }
+      try { client.socket.destroy(); } catch (e) {}
+    }
+    clients.clear();
+    return originalClose(cb);
+  };
 
   return { server, broadcast, clients };
 }

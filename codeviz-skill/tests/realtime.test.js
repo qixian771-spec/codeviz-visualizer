@@ -103,9 +103,88 @@ async function testRealtimeBroadcast() {
   fs.rmSync(testDir, { recursive: true, force: true });
 }
 
-testRealtimeBroadcast().then(() => {
-  console.log('CodeViz realtime refresh tests passed.');
-}).catch(err => {
-  console.error('Test failed:', err);
-  process.exit(1);
-});
+// 构造带 mask 的客户端帧（客户端 -> 服务端方向必须 mask）
+function maskFrame(opcode, payloadBuf) {
+  const mask = crypto.randomBytes(4);
+  const len = payloadBuf.length;
+  let header;
+  if (len < 126) {
+    header = Buffer.alloc(2);
+    header[1] = 0x80 | len;
+  } else {
+    header = Buffer.alloc(4);
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(len, 2);
+  }
+  header[0] = 0x80 | (opcode & 0x0f);
+  const masked = Buffer.alloc(len);
+  for (let i = 0; i < len; i++) masked[i] = payloadBuf[i] ^ mask[i % 4];
+  return Buffer.concat([header, mask, masked]);
+}
+
+// Regression: server must answer client ping with pong, and drop the client on close.
+async function testWebSocketControlFrames() {
+  const frameDir = path.join(__dirname, 'temp-ws-control');
+  if (!fs.existsSync(frameDir)) fs.mkdirSync(frameDir, { recursive: true });
+  fs.writeFileSync(path.join(frameDir, 'tasks.md'), '# Tasks: X\n## Phase 1\n- [ ] T001 Task\n');
+
+  const manager = new ProjectManager();
+  manager.addProject(frameDir);
+  const { server, clients } = createServer(manager);
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+
+  const wsKey = crypto.randomBytes(16).toString('base64');
+  const req = http.request({
+    port,
+    host: '127.0.0.1',
+    path: '/ws',
+    headers: {
+      'Connection': 'Upgrade',
+      'Upgrade': 'websocket',
+      'Sec-WebSocket-Key': wsKey,
+      'Sec-WebSocket-Version': '13'
+    }
+  });
+  const socket = await new Promise((resolve, reject) => {
+    req.on('upgrade', (res, s) => resolve(s));
+    req.on('error', reject);
+    req.end();
+  });
+
+  await new Promise((r) => setTimeout(r, 50));
+  assert.strictEqual(clients.size, 1, 'control-frame test: should have 1 client');
+
+  // ping -> pong
+  const pongPromise = new Promise((resolve) => {
+    socket.on('data', (chunk) => {
+      if ((chunk[0] & 0x0f) === 0xA) resolve('pong');
+    });
+  });
+  socket.write(maskFrame(0x9, Buffer.from('hi')));
+  const gotPong = await Promise.race([
+    pongPromise,
+    new Promise((r) => setTimeout(() => r('timeout'), 1000))
+  ]);
+  assert.strictEqual(gotPong, 'pong', 'server should reply pong to client ping');
+
+  // close -> cleanup
+  socket.write(maskFrame(0x8, Buffer.alloc(0)));
+  await new Promise((r) => setTimeout(r, 100));
+  assert.strictEqual(clients.size, 0, 'server should drop client on close frame');
+  console.log('\u2713 WebSocket control frames (ping/pong/close) verified');
+
+  try { socket.destroy(); } catch (e) {}
+  await new Promise((resolve) => server.close(resolve));
+  fs.rmSync(frameDir, { recursive: true, force: true });
+}
+
+testRealtimeBroadcast()
+  .then(() => testWebSocketControlFrames())
+  .then(() => {
+    console.log('CodeViz realtime refresh tests passed.');
+  }).catch(err => {
+    console.error('Test failed:', err);
+    process.exit(1);
+  });

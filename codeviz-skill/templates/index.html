@@ -289,11 +289,84 @@
     .canvas::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
     .canvas::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
 
+    /* Zoom/pan viewport: a single transform layer wrapping phase/node/svg content. */
+    #viewport { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform-origin: 0 0; will-change: transform; }
+    .canvas.panning { cursor: grabbing; }
+    .canvas.pannable { cursor: grab; }
     #phase-layer, #node-layer { position: absolute; top: 0; left: 0; width: 100%; pointer-events: none; }
     #node-layer { pointer-events: auto; }
     #node-layer .node { pointer-events: auto; }
 
-    .canvas svg.flow { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+    .canvas svg.flow { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; overflow: visible; }
+
+    /* Zoom controls (bottom-right, above minimap) */
+    .zoom-controls {
+      position: absolute;
+      right: 28px;
+      bottom: 168px;
+      z-index: 12;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .zoom-btn {
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text-secondary);
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+      backdrop-filter: blur(20px);
+      transition: transform 200ms var(--ease), color 200ms var(--ease), border-color 200ms var(--ease);
+      user-select: none;
+    }
+    .zoom-btn:hover { color: var(--text-primary); border-color: rgba(139, 92, 246, 0.6); transform: translateY(-1px); }
+    .zoom-btn:active { transform: translateY(0) scale(0.94); }
+    .zoom-level {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-tertiary);
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+
+    /* Minimap (bottom-right corner) */
+    .minimap {
+      position: absolute;
+      right: 28px;
+      bottom: 12px;
+      width: 190px;
+      height: 132px;
+      z-index: 11;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+      cursor: pointer;
+    }
+    .minimap-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .minimap-viewport {
+      position: absolute;
+      border: 1.5px solid var(--flow);
+      background: rgba(139, 92, 246, 0.12);
+      border-radius: 3px;
+      pointer-events: none;
+      box-shadow: 0 0 8px var(--flow-glow);
+    }
+    :root[data-theme="light"] .minimap-viewport { background: rgba(124, 58, 237, 0.1); }
+
+    @media (max-width: 900px) {
+      .minimap { display: none; }
+      .zoom-controls { right: 12px; bottom: 12px; }
+    }
 
     @keyframes flow-dash { to { stroke-dashoffset: -28; } }
     @keyframes flow-dash-fast { to { stroke-dashoffset: -56; } }
@@ -535,29 +608,44 @@
 
     <div class="canvas-wrap">
       <div class="canvas" id="canvas">
-        <svg class="flow" id="flow-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <defs>
-            <marker id="arr-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-              <path d="M0 0L10 5L0 10z" fill="#8B5CF6" opacity="0.6"></path>
-            </marker>
-            <marker id="arr-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-              <path d="M0 0L10 5L0 10z" fill="#F59E0B"></path>
-            </marker>
-            <marker id="arr-error" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-              <path d="M0 0L10 5L0 10z" fill="#EF4444"></path>
-            </marker>
-          </defs>
-          <g id="flow-lines"></g>
-          <g id="flow-particles"></g>
-        </svg>
-        <div id="phase-layer"></div>
-        <div id="node-layer"></div>
+        <div id="viewport">
+          <svg class="flow" id="flow-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <marker id="arr-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M0 0L10 5L0 10z" fill="#8B5CF6" opacity="0.6"></path>
+              </marker>
+              <marker id="arr-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M0 0L10 5L0 10z" fill="#F59E0B"></path>
+              </marker>
+              <marker id="arr-error" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M0 0L10 5L0 10z" fill="#EF4444"></path>
+              </marker>
+              <marker id="arr-done" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M0 0L10 5L0 10z" fill="#10B981" opacity="0.55"></path>
+              </marker>
+            </defs>
+            <g id="flow-lines"></g>
+            <g id="flow-particles"></g>
+          </svg>
+          <div id="phase-layer"></div>
+          <div id="node-layer"></div>
+        </div>
         <div class="legend">
           <div class="legend-item"><span class="legend-line"></span><span>依赖流动</span></div>
           <div class="legend-item"><span class="legend-line active"></span><span>进行中</span></div>
           <div class="legend-item"><span class="legend-line done"></span><span>已完成</span></div>
         </div>
-        <div class="hint">虚线流向 = 任务依赖 · 光点 = 实时推进</div>
+        <div class="hint">滚轮缩放 · 拖拽平移 · 光点 = 实时推进</div>
+        <div class="zoom-controls" id="zoom-controls">
+          <div class="zoom-btn" id="zoom-in" title="放大">+</div>
+          <div class="zoom-btn" id="zoom-out" title="缩小">−</div>
+          <div class="zoom-btn" id="zoom-reset" title="重置视图">✲</div>
+          <div class="zoom-level" id="zoom-level">100%</div>
+        </div>
+        <div class="minimap" id="minimap" title="点击/拖拽跳转">
+          <canvas class="minimap-canvas" id="minimap-canvas"></canvas>
+          <div class="minimap-viewport" id="minimap-viewport"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -582,6 +670,6 @@
       }
     });
   </script>
-  <script src="/client.js?v=6"></script>
+  <script src="/client.js?v=7"></script>
 </body>
 </html>
