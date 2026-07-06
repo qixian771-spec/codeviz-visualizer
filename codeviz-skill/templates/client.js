@@ -711,8 +711,12 @@ class CodeVizClient {
     return String(name).replace(/^Phase\s+\d+\s*[:：-]?\s*/i, '').trim() || name;
   }
 
-  formatPhaseLabel(name) {
-    const index = this.normalizePhases().findIndex(phase => phase.name === name);
+  formatPhaseLabel(phaseBox) {
+    const name = phaseBox && phaseBox.name != null ? phaseBox.name : phaseBox;
+    const id = phaseBox && phaseBox.id != null ? phaseBox.id : null;
+    const normalized = this.normalizePhases();
+    let index = id != null ? normalized.findIndex(phase => phase.id === id) : -1;
+    if (index < 0) index = normalized.findIndex(phase => phase.name === name);
     return index >= 0 ? `Phase ${index + 1} · ${name}` : name;
   }
 
