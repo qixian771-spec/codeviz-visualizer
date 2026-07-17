@@ -76,6 +76,15 @@ async function main() {
 
   // 启动服务
   const { server, broadcast } = createServer(projectManager);
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[codeviz] ✕ 端口 ${args.port} 已被占用（可能有一个 CodeViz 正在运行）。`);
+      console.error(`         换个端口再试：node bin/codeviz.js --port ${args.port + 1}`);
+    } else {
+      console.error('[codeviz] ✕ 服务启动失败:', err.message);
+    }
+    process.exit(1);
+  });
   server.listen(args.port, () => {
     const url = `http://localhost:${args.port}`;
     console.log(`\n[codeviz] ✓ 服务已启动`);

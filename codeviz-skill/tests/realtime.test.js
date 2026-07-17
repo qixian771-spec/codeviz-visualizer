@@ -180,8 +180,38 @@ async function testWebSocketControlFrames() {
   fs.rmSync(frameDir, { recursive: true, force: true });
 }
 
+// Bug: 端口被占用时曾以 Unhandled 'error' event 崩溃满屏堆栈
+async function testPortInUseFriendlyError() {
+  const net = require('net');
+  const { spawnSync } = require('child_process');
+
+  const busyDir = path.join(__dirname, 'temp-port-busy');
+  if (!fs.existsSync(busyDir)) fs.mkdirSync(busyDir, { recursive: true });
+  fs.writeFileSync(path.join(busyDir, 'tasks.md'), '# Tasks: X\n## Phase 1\n- [ ] T001 Task\n');
+
+  const blocker = net.createServer();
+  await new Promise((resolve) => blocker.listen(0, resolve));
+  const port = blocker.address().port;
+
+  const res = spawnSync(
+    process.execPath,
+    [path.join(__dirname, '..', 'bin', 'codeviz.js'), busyDir, '--port', String(port), '--no-open'],
+    { encoding: 'utf-8', timeout: 10000 }
+  );
+  const output = String(res.stdout || '') + String(res.stderr || '');
+
+  assert.strictEqual(res.status, 1, 'busy port should exit with code 1');
+  assert(output.includes('端口'), 'should print a friendly port-in-use message');
+  assert(!output.includes("Unhandled 'error'"), 'must not crash with an unhandled error event');
+  console.log('✓ Port-in-use friendly error verified');
+
+  await new Promise((resolve) => blocker.close(resolve));
+  fs.rmSync(busyDir, { recursive: true, force: true });
+}
+
 testRealtimeBroadcast()
   .then(() => testWebSocketControlFrames())
+  .then(() => testPortInUseFriendlyError())
   .then(() => {
     console.log('CodeViz realtime refresh tests passed.');
   }).catch(err => {

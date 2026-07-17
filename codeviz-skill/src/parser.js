@@ -93,25 +93,51 @@ function parseTasksMd(content) {
         continue;
       }
 
-      // 任务补充描述：- [ ] xxx 或 - [x] xxx
+      // 任务补充描述 + 子清单：- [ ] xxx 或 - [x] xxx
+      // 只统计勾选数，状态在解析结束后统一推导（全勾 done / 部分 in-progress）
       const checkboxMatch = trimmed.match(/^-\s+\[([ xX])\]\s*(.+)$/);
       if (checkboxMatch) {
-        const isChecked = checkboxMatch[1].toLowerCase() === 'x';
-        const desc = checkboxMatch[2].trim();
-        if (isChecked) currentTask.status = 'done';
-        appendDescription(currentTask, desc);
+        appendDescription(currentTask, checkboxMatch[2].trim());
+        currentTask._subTotal = (currentTask._subTotal || 0) + 1;
+        if (checkboxMatch[1].toLowerCase() === 'x') {
+          currentTask._subChecked = (currentTask._subChecked || 0) + 1;
+        }
         continue;
       }
     }
 
     // 检测 FAILED / ERROR 标记
-    if (currentTask && /\b(FAILED|ERROR|错误|失败|报错)\b/i.test(trimmed)) {
+    if (currentTask && isErrorMarkerLine(trimmed)) {
       currentTask.status = 'error';
       currentTask.errorMessage = trimmed;
     }
   }
 
+  // 由子清单推导状态：全部勾选 → done，部分勾选 → in-progress。
+  // 手动标记（任务自身 checkbox 的 done、FAILED 标记的 error）优先，不被子清单覆盖。
+  for (const task of tasks) {
+    const total = task._subTotal || 0;
+    const checked = task._subChecked || 0;
+    delete task._subTotal;
+    delete task._subChecked;
+    if (task.status !== 'pending' || total === 0) continue;
+    if (checked === total) task.status = 'done';
+    else if (checked > 0) task.status = 'in-progress';
+  }
+
   return { phases, tasks };
+}
+
+/**
+ * 判定一行是否是失败/报错标记。
+ * \b 词边界对中文无效，且小写 "error handling" 这类普通描述不该误报，
+ * 所以只认三种形态：大写独立 FAILED/ERROR、"failed:/error:/失败：" 前缀、中文标记收尾。
+ */
+function isErrorMarkerLine(line) {
+  if (/\b(FAILED|ERROR)\b/.test(line)) return true;
+  if (/(failed|error|失败|错误|报错)\s*[:：]/i.test(line)) return true;
+  if (/(失败|错误|报错)\s*[!！。]?\s*$/.test(line)) return true;
+  return false;
 }
 
 function commitPhase(phase, phases) {

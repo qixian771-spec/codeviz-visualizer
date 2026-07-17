@@ -9,6 +9,7 @@ const path = require('path');
 const { parseTasksMd, getStats } = require('../src/parser');
 const { ProjectManager } = require('../src/project-manager');
 const { createProjectPayload } = require('../src/server');
+const { isCommitRelatedToTask, parseNameStatus } = require('../src/git-tracker');
 
 const root = path.resolve(__dirname, '..');
 const exampleRoot = path.join(root, 'examples');
@@ -161,6 +162,124 @@ function testDuplicatePhaseNamesDistinctIds() {
   assert.strictEqual(ids.size, 2, 'phase ids must be unique even when names match');
 }
 
+function testSubChecklistDoesNotCompleteParent() {
+  // Bug: 勾选任意一个子清单项曾把父任务整体标成 done。
+  // 正确语义：全部勾选 → done；部分勾选 → in-progress；一个没勾 → 保持原状态
+  const partial = parseTasksMd(`# Tasks: X
+## Phase 1
+- [ ] T001 主任务
+- [x] 子步骤A
+- [ ] 子步骤B
+`);
+  assert.strictEqual(partial.tasks.length, 1, 'sub items should not become tasks');
+  assert.strictEqual(partial.tasks[0].status, 'in-progress', 'partially checked sub-items mean in-progress, not done');
+
+  const all = parseTasksMd(`# Tasks: X
+## Phase 1
+### T001 - 主任务
+- [x] 子步骤A
+- [x] 子步骤B
+`);
+  assert.strictEqual(all.tasks[0].status, 'done', 'all sub-items checked means done');
+
+  const none = parseTasksMd(`# Tasks: X
+## Phase 1
+### T001 - 主任务
+- [ ] 子步骤A
+`);
+  assert.strictEqual(none.tasks[0].status, 'pending', 'no checked sub-items keeps pending');
+}
+
+function testErrorMarkerPrecision() {
+  // Bug: 描述里出现 error 单词就误报；纯中文 失败/错误 因 \b 对中文无效检测不到
+  const mention = parseTasksMd(`# Tasks: X
+## Phase 1
+### T001 - 添加 error handling 逻辑
+这个任务要处理 error 场景
+`);
+  assert.strictEqual(mention.tasks[0].status, 'pending', 'mentioning "error" must not flag the task');
+
+  const zhColon = parseTasksMd(`# Tasks: X
+## Phase 1
+### T002 - 部署
+构建失败：内存不足
+`);
+  assert.strictEqual(zhColon.tasks[0].status, 'error', 'Chinese 失败： marker should be detected');
+
+  const upper = parseTasksMd(`# Tasks: X
+## Phase 1
+### T003 - CI
+Build FAILED
+`);
+  assert.strictEqual(upper.tasks[0].status, 'error', 'uppercase FAILED should be detected');
+
+  const colon = parseTasksMd(`# Tasks: X
+## Phase 1
+### T004 - X
+error: cannot find module
+`);
+  assert.strictEqual(colon.tasks[0].status, 'error', 'error: prefix should be detected');
+
+  const zhEnd = parseTasksMd(`# Tasks: X
+## Phase 1
+### T005 - Y
+部署到生产环境失败
+`);
+  assert.strictEqual(zhEnd.tasks[0].status, 'error', 'Chinese marker at line end should be detected');
+
+  const zhMid = parseTasksMd(`# Tasks: X
+## Phase 1
+### T006 - Z
+处理登录失败的情况
+`);
+  assert.strictEqual(zhMid.tasks[0].status, 'pending', 'Chinese marker mid-sentence must not flag');
+}
+
+function testCommitFileMatchBoundary() {
+  // Bug: endsWith 无路径边界，latest.js 误匹配 test.js
+  const noise = { message: 'refactor', files: ['src/latest.js'] };
+  assert.strictEqual(isCommitRelatedToTask(noise, { id: 'T009', files: ['test.js'] }), false,
+    'latest.js must not match task file test.js');
+
+  const nested = { message: 'x', files: ['src/app/test.js'] };
+  assert.strictEqual(isCommitRelatedToTask(nested, { id: 'T009', files: ['test.js'] }), true,
+    'suffix match on a path segment boundary should still work');
+
+  const reverse = { message: 'x', files: ['test.js'] };
+  assert.strictEqual(isCommitRelatedToTask(reverse, { id: 'T009', files: ['app/test.js'] }), false,
+    'root-level test.js should not match nested task path on bare suffix');
+}
+
+function testNameStatusParsing() {
+  // Bug: --name-status 行按 \s+ 切分，带空格文件名被截断，rename 只取旧路径
+  const out = [
+    'COMMIT:abc123|me|2026-07-16|feat T001 done',
+    'M\tsrc/my file.txt',
+    'R100\told name.js\tnew name.js',
+    'A\tsrc/plain.js'
+  ].join('\n');
+  const commits = parseNameStatus(out);
+  assert.strictEqual(commits.length, 1);
+  assert(commits[0].files.includes('src/my file.txt'), 'filename with spaces must stay intact');
+  assert(commits[0].files.includes('new name.js'), 'rename should capture the new path');
+  assert(commits[0].files.includes('src/plain.js'), 'plain path should parse');
+}
+
+function testClientRegressionCanaries() {
+  const client = fs.readFileSync(templateClient, 'utf-8');
+  // Bug 2 回归：formatPhaseLabel 必须拿到整个 phaseBox（含 id），不能只传 name
+  assert(!client.includes('formatPhaseLabel(phaseBox.name)'),
+    'phase label must not be looked up by name only');
+  assert(client.includes('formatPhaseLabel(phaseBox)'),
+    'phase label should be formatted from the phase box (id-based)');
+  // 美术：默认主题必须是深色（首次打开、无本地偏好时）
+  assert(/localStorage\.getItem\('codeviz-theme'\)\s*\|\|\s*'dark'/.test(client),
+    'default theme should be dark');
+  // 断线重连后必须重新拉取当前项目，否则界面停留旧数据
+  assert(client.includes('this.loadProject(this.currentProjectId)'),
+    'reconnect should reload current project');
+}
+
 async function run() {
   const tests = [
     testExampleParsing,
@@ -170,7 +289,12 @@ async function run() {
     testInlineFilesDependsNoCollision,
     testDuplicateTaskIdDedup,
     testNonPhaseHeadingIgnored,
-    testDuplicatePhaseNamesDistinctIds
+    testDuplicatePhaseNamesDistinctIds,
+    testSubChecklistDoesNotCompleteParent,
+    testErrorMarkerPrecision,
+    testCommitFileMatchBoundary,
+    testNameStatusParsing,
+    testClientRegressionCanaries
   ];
   for (const test of tests) {
     await test();

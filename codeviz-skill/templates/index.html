@@ -283,7 +283,8 @@
     .stat-pill .num { font-weight: 800; color: var(--text-primary); }
 
     .canvas-wrap { flex: 1; position: relative; overflow: hidden; padding: 0 28px 20px; }
-    .canvas { width: 100%; height: 100%; position: relative; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; }
+    /* 宽屏：canvas 是 zoom/pan 的固定视口，禁止自身滚动（滚动会破坏连线坐标换算）；窄屏在下方 media 里恢复滚动 */
+    .canvas { width: 100%; height: 100%; position: relative; overflow: hidden; }
     .canvas::-webkit-scrollbar { width: 5px; }
     .canvas::-webkit-scrollbar-track { background: transparent; }
     .canvas::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
@@ -489,7 +490,7 @@
     .legend-line { width: 26px; height: 0; border-top: 1.5px dashed var(--flow); opacity: 0.5; }
     .legend-line.active { border-top-color: var(--progress-border); border-top-style: solid; opacity: 0.9; filter: drop-shadow(0 0 2px var(--progress-glow)); }
     .legend-line.done { border-top-color: var(--done-border); border-top-style: solid; opacity: 0.5; }
-    .hint { bottom: 12px; right: 28px; }
+    .hint { bottom: 12px; right: 240px; } /* 让开右下角 minimap（28px + 190px 宽 + 间距） */
 
     .empty {
       position: absolute;
@@ -672,6 +673,6 @@
       }
     });
   </script>
-  <script src="/client.js?v=8"></script>
+  <script src="/client.js?v=9"></script>
 </body>
 </html>

@@ -15,7 +15,8 @@ class CodeVizClient {
     this.reconnectDelay = 1000;
     this.lastStatusById = new Map();
     this.resizeTimer = null;
-    this.themeChoice = localStorage.getItem('codeviz-theme') || 'system';
+    // 默认深色——这是设计稿的主视觉；用户切换后记住偏好
+    this.themeChoice = localStorage.getItem('codeviz-theme') || 'dark';
 
     // Zoom/pan state. The #viewport layer is CSS-transformed by translate()+scale().
     this.scale = 1;
@@ -222,6 +223,8 @@ class CodeVizClient {
     this.ws.onopen = () => {
       this.reconnectDelay = 1000;
       this.setStatus('实时', 'online');
+      // 断线期间的广播已丢失，重连成功后重新拉取当前项目，避免界面停留在旧状态
+      if (this.currentProjectId) this.loadProject(this.currentProjectId);
     };
 
     this.ws.onmessage = (event) => {
@@ -358,10 +361,13 @@ class CodeVizClient {
 
     const layout = this.computeLayout();
 
-    // 设置 canvas 内容层的最小高度，确保能容纳所有节点
+    // 设置内容层高度，确保能容纳所有节点。
+    // 只有窄屏单列模式（页面滚动）才把 canvas 本身撑高；
+    // 宽屏靠 zoom/pan 导航，canvas 必须保持可视高度，
+    // 否则 clampTranslate/minimap/zoom 都会把撑高后的高度当可视高度用，导致平移不到底部。
     const contentHeight = layout.contentHeight || 0;
     this.contentHeight = contentHeight;
-    this.dom.canvas.style.minHeight = contentHeight + 'px';
+    this.dom.canvas.style.minHeight = layout.narrowMode ? contentHeight + 'px' : '';
     this.dom.phaseLayer.style.height = contentHeight + 'px';
     this.dom.nodeLayer.style.height = contentHeight + 'px';
 
@@ -675,7 +681,7 @@ class CodeVizClient {
     el.style.top = `${phaseBox.topPx}px`;
     el.style.width = `${phaseBox.width}%`;
     el.style.height = `${phaseBox.heightPx}px`;
-    el.innerHTML = `<span class="phase-zone-label"><span class="phase-dot"></span>${this.escape(this.formatPhaseLabel(phaseBox.name))}</span>`;
+    el.innerHTML = `<span class="phase-zone-label"><span class="phase-dot"></span>${this.escape(this.formatPhaseLabel(phaseBox))}</span>`;
     return el;
   }
 

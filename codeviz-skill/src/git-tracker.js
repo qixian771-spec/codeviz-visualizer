@@ -59,41 +59,7 @@ async function getRecentCommits(projectRoot, limit = 50) {
       { cwd: projectRoot, encoding: 'utf-8', timeout: 5000 }
     );
 
-    const trimmed = (logOutput || '').trim();
-    if (!trimmed) {
-      _commitCache.set(projectRoot, { data: [], ts: Date.now() });
-      return [];
-    }
-
-    const commits = [];
-    let currentCommit = null;
-
-    const lines = trimmed.split('\n');
-    for (const line of lines) {
-      const lineTrimmed = line.trim();
-      if (!lineTrimmed) continue;
-
-      if (lineTrimmed.startsWith('COMMIT:')) {
-        const payload = lineTrimmed.substring(7);
-        const [hash, author, date, ...msgParts] = payload.split('|');
-        currentCommit = {
-          hash: hash.trim(),
-          author: author.trim(),
-          date: date.trim(),
-          message: msgParts.join('|').trim(),
-          files: []
-        };
-        commits.push(currentCommit);
-      } else if (currentCommit) {
-        // --name-status 输出格式例如: "M\tpath/to/file" 或 "A\tpath/to/file"
-        const parts = lineTrimmed.split(/\s+/);
-        if (parts.length >= 2) {
-          currentCommit.files.push(parts[1].trim());
-        } else {
-          currentCommit.files.push(lineTrimmed);
-        }
-      }
-    }
+    const commits = parseNameStatus(logOutput);
 
     // 写入缓存
     _commitCache.set(projectRoot, { data: commits, ts: Date.now() });
@@ -102,6 +68,51 @@ async function getRecentCommits(projectRoot, limit = 50) {
     // 不是 git 仓库或 git 命令失败
     return [];
   }
+}
+
+/**
+ * 解析 git log --name-status 输出成 commit 数组
+ * @param {string} logOutput
+ * @returns {Array<{hash: string, message: string, author: string, date: string, files: string[]}>}
+ */
+function parseNameStatus(logOutput) {
+  const trimmed = (logOutput || '').trim();
+  if (!trimmed) return [];
+
+  const commits = [];
+  let currentCommit = null;
+
+  for (const line of trimmed.split('\n')) {
+    const lineTrimmed = line.trim();
+    if (!lineTrimmed) continue;
+
+    if (lineTrimmed.startsWith('COMMIT:')) {
+      const payload = lineTrimmed.substring(7);
+      const [hash, author, date, ...msgParts] = payload.split('|');
+      currentCommit = {
+        hash: hash.trim(),
+        author: author.trim(),
+        date: date.trim(),
+        message: msgParts.join('|').trim(),
+        files: []
+      };
+      commits.push(currentCommit);
+    } else if (currentCommit) {
+      // --name-status 行形如 "M\tpath" 或 "R100\told\tnew"；
+      // 路径可能含空格，必须按 \t 切分；rename/copy 把旧、新路径都记上
+      const parts = lineTrimmed.split('\t');
+      if (parts.length >= 2) {
+        for (const p of parts.slice(1)) {
+          const file = p.trim();
+          if (file) currentCommit.files.push(file);
+        }
+      } else {
+        currentCommit.files.push(lineTrimmed);
+      }
+    }
+  }
+
+  return commits;
 }
 
 /**
@@ -135,9 +146,12 @@ function isCommitRelatedToTask(commit, task) {
   if (task.files && task.files.length > 0) {
     return task.files.some(taskFile =>
       commit.files.some(commitFile => {
-        const normTask = path.normalize(taskFile).toLowerCase();
-        const normCommit = path.normalize(commitFile).toLowerCase();
-        return normCommit === normTask || normCommit.endsWith(normTask) || normTask.endsWith(normCommit);
+        const normTask = normalizePathForMatch(taskFile);
+        const normCommit = normalizePathForMatch(commitFile);
+        // 相等，或 commit 路径在路径段边界上以任务文件结尾
+        // （git 输出是仓库根相对路径，任务文件通常是项目相对路径，可能更浅）。
+        // 不做反向后缀匹配：裸 endsWith 会让 latest.js 撞上 test.js 这类误报。
+        return normCommit === normTask || normCommit.endsWith('/' + normTask);
       })
     );
   }
@@ -145,4 +159,8 @@ function isCommitRelatedToTask(commit, task) {
   return false;
 }
 
-module.exports = { getRecentCommits, extractTaskIds, isCommitRelatedToTask, clearCommitCache };
+function normalizePathForMatch(p) {
+  return path.normalize(String(p)).replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+}
+
+module.exports = { getRecentCommits, parseNameStatus, extractTaskIds, isCommitRelatedToTask, clearCommitCache };
