@@ -1,0 +1,1019 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>CodeViz · 飞升天梯 Ascension</title>
+<style>
+  :root{
+    --done:#2ee6a8; --prog:#ffc65c; --pend:#66739a; --err:#ff6b6b;
+    --gold:#ffd98a; --txt:#d7ddef; --dim:rgba(199,208,232,.55);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1600px;height:900px;background:#05050f;overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  #stage{position:absolute;inset:0;width:1600px;height:900px;isolation:isolate}
+  svg#scene{position:absolute;inset:0;display:block;z-index:2}
+  .depth-layer{position:absolute;inset:-55px;pointer-events:none;overflow:hidden;will-change:transform}
+  .depth-far{z-index:0;background:
+    radial-gradient(ellipse at 50% 0%,rgba(130,112,220,.22),transparent 48%),
+    repeating-linear-gradient(104deg,transparent 0 120px,rgba(188,166,255,.022) 122px 125px,transparent 128px 240px);
+    animation:skyBreathe 13s ease-in-out infinite alternate}
+  .depth-far::after{content:"";position:absolute;left:430px;top:-180px;width:740px;height:880px;
+    background:conic-gradient(from 174deg at 50% 0%,transparent 0 41%,rgba(255,226,173,.14) 47%,rgba(175,158,245,.11) 51%,transparent 58%);
+    filter:blur(18px);transform-origin:50% 0;animation:heavenRay 7.5s ease-in-out infinite alternate}
+  .depth-mid{z-index:1}
+  .depth-mid i{position:absolute;left:-18%;width:136%;height:180px;border-radius:50%;
+    background:radial-gradient(ellipse,rgba(124,119,164,.24),rgba(57,52,91,.09) 45%,transparent 72%);
+    filter:blur(18px);animation:cloudDepth 14s ease-in-out infinite alternate}
+  .depth-mid i:nth-child(1){top:36%;transform:scale(1.2);opacity:.42}
+  .depth-mid i:nth-child(2){top:59%;animation-delay:-9s;animation-direction:alternate-reverse;opacity:.55}
+  .depth-mid i:nth-child(3){top:78%;animation-delay:-18s;transform:scale(1.45);opacity:.7}
+  .depth-near{z-index:3}
+  .depth-near b{position:absolute;width:310px;height:74px;border-radius:50%;filter:blur(24px);
+    background:linear-gradient(90deg,transparent,rgba(207,198,238,.14),transparent);
+    animation:nearCloud 12s linear infinite}
+  @keyframes skyBreathe{to{filter:brightness(1.18) saturate(1.12)}}
+  @keyframes heavenRay{from{transform:rotate(-5deg) scaleX(.82);opacity:.22}
+    to{transform:rotate(5deg) scaleX(1.18);opacity:.62}}
+  @keyframes cloudDepth{from{translate:var(--px,0) var(--py,0);transform:translateX(-70px) scaleX(1)}
+    to{translate:var(--px,0) var(--py,0);transform:translateX(100px) scaleX(1.12)}}
+  @keyframes nearCloud{0%{transform:translate(-420px,40px) scale(.7);opacity:0}18%{opacity:.4}
+    100%{transform:translate(1850px,-170px) scale(1.7);opacity:0}}
+
+  /* ---------- svg text ---------- */
+  text{paint-order:stroke fill;font-family:inherit}
+  .nlab{font-size:13.5px;letter-spacing:.2px;stroke:rgba(5,6,16,.92);stroke-width:3.2px}
+  .statusWord{font-size:11px;font-weight:800;letter-spacing:1.2px;stroke:none}
+  .stateIcon{font-size:16px;font-weight:900;stroke:rgba(5,6,16,.9);stroke-width:3px}
+  .tickLab{font-size:9.5px;fill:#98a1c9;opacity:.7;stroke:rgba(5,6,16,.8);stroke-width:2px}
+  .plaq{font-size:12.5px;fill:#ffe3ac;stroke:rgba(5,6,16,.92);stroke-width:3px;font-weight:600;letter-spacing:1.5px}
+  .gateLab{font-size:13px;fill:rgba(255,226,166,.92);letter-spacing:6px;stroke:rgba(5,6,16,.85);stroke-width:2.6px}
+  .bigZh{font-size:27px;font-weight:700;fill:url(#zhG);letter-spacing:0;stroke:rgba(5,6,16,.5);stroke-width:1px}
+  .mini{font-size:9px;letter-spacing:2.6px;fill:#8d96c0}
+  .smallZh{font-size:12px;fill:#cfd6ec;letter-spacing:2.5px}
+  .frac{font-size:21px;font-weight:700;fill:#ffd98a;stroke:rgba(5,6,16,.6);stroke-width:1px}
+  .fracsm{font-size:11px;fill:#98a1c9;font-weight:500}
+  .plate{fill:rgba(13,15,34,.68);stroke:rgba(255,217,138,.22);stroke-width:1}
+  .hr{stroke:rgba(255,217,138,.25);stroke-width:1}
+  .phasePlate{fill:rgba(11,13,31,.82);stroke:rgba(255,217,138,.24);stroke-width:1}
+  .phaseIndex{font-size:8.5px;fill:#929cc4;letter-spacing:1.8px;stroke:none}
+  .phaseName{font-size:12px;fill:#f3dfb8;font-weight:700;stroke:rgba(5,6,16,.9);stroke-width:2.4px}
+  .phaseMeta{font-size:9.5px;fill:#aeb8d4;stroke:rgba(5,6,16,.85);stroke-width:2px}
+  .phaseRail{fill:none;stroke:rgba(255,217,138,.16);stroke-width:1;stroke-dasharray:3 8}
+  .taskId{font-size:10px;font-weight:800;letter-spacing:.7px;stroke:rgba(5,6,16,.96);stroke-width:3px}
+  .taskName{font-size:12.5px;font-weight:600;stroke:rgba(5,6,16,.96);stroke-width:3.2px}
+  .taskMeta{font-size:9px;fill:#9ca7c9;stroke:rgba(5,6,16,.9);stroke-width:2.4px}
+  .taskLabelPlate{fill:rgba(7,9,23,.82);stroke-width:1}
+
+  /* ---------- animations ---------- */
+  .spin,.spinFast,.spin20,.spin48,.spinRev60{transform-box:fill-box;transform-origin:center}
+  .breathe,.glowSteady,.portal,.headP{transform-box:fill-box;transform-origin:center}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes spinRev{to{transform:rotate(-360deg)}}
+  .spin{animation:spin 30s linear infinite}
+  .spinFast{animation:spin 5s linear infinite, flickA 1.6s ease-in-out infinite alternate}
+  .spin20{animation:spin 20s linear infinite}
+  .spin48{animation:spin 48s linear infinite}
+  .spinRev60{animation:spinRev 60s linear infinite}
+
+  @keyframes breathe{from{opacity:.5}to{opacity:1}}
+  .breathe{animation:breathe 4.2s ease-in-out infinite alternate}
+  @keyframes glowSteady{from{opacity:.85}to{opacity:1}}
+  .glowSteady{animation:glowSteady 3.4s ease-in-out infinite alternate}
+  @keyframes flickA{from{opacity:.55}to{opacity:1}}
+  .flick{animation:flickA 1.3s ease-in-out infinite alternate}
+  .doorFlick{animation:flickA 1.1s ease-in-out infinite alternate}
+
+  @keyframes bobK{0%,100%{transform:translateY(0)}50%{transform:translateY(-4.5px)}}
+  .bob{animation:bobK 5.8s ease-in-out infinite}
+  .bobSlow{animation:bobK 8s ease-in-out infinite}
+
+  @keyframes pendFade{from{opacity:.6}to{opacity:.92}}
+  .pendGroup{animation:pendFade 7s ease-in-out infinite alternate}
+
+  @keyframes mistK{from{transform:translateX(-16px)}to{transform:translateX(16px)}}
+  .mist{animation:mistK 9s ease-in-out infinite alternate}
+  .mist.r{animation-direction:alternate-reverse}
+
+  @keyframes qiK{0%{transform:translateY(0);opacity:0}18%{opacity:.95}70%{opacity:.5}100%{transform:translateY(-42px);opacity:0}}
+  .qi{animation:qiK 2.4s ease-out infinite}
+
+  @keyframes twK{from{opacity:.1}to{opacity:.68}}
+  .tw{animation:twK 4s ease-in-out infinite alternate}
+
+  @keyframes moteK{0%{transform:translate(0,0);opacity:0}12%{opacity:.5}75%{opacity:.25}100%{transform:translate(16px,-140px);opacity:0}}
+  .mote{animation:moteK 20s linear infinite}
+
+  @keyframes driftL{from{transform:translateX(0)}to{transform:translateX(-1600px)}}
+  @keyframes driftR{from{transform:translateX(-1600px)}to{transform:translateX(0)}}
+
+  @keyframes dashF{to{stroke-dashoffset:-64px}}
+  .cflow{fill:none;stroke:rgba(255,223,158,.88);stroke-width:1.8;stroke-dasharray:3 13;stroke-linecap:round;animation:dashF 1.9s linear infinite}
+  .cbase{fill:none;stroke:rgba(255,217,138,.12);stroke-width:4.5;stroke-linecap:round}
+  .cflowUp{animation:dashF 1.6s linear infinite}
+  .cglow{fill:none;stroke:rgba(255,190,110,.07);stroke-width:10;stroke-linecap:round}
+  .dep-done{stroke:rgba(46,230,168,.7)}
+  .dep-prog{stroke:rgba(255,198,92,.95)}
+  .dep-pend{stroke:rgba(128,141,184,.55)}
+  .dep-err{stroke:rgba(255,107,107,.92)}
+
+  @keyframes shimK{from{opacity:.72}to{opacity:1}}
+  .shim{animation:shimK 2.8s ease-in-out infinite alternate}
+
+  @keyframes climbK{0%{transform:translateY(0);opacity:0}10%{opacity:1}88%{opacity:1}100%{transform:translateY(-192px);opacity:0}}
+  .climber{animation:climbK 5.5s ease-in-out infinite}
+
+  @keyframes headK{from{transform:scale(.92);opacity:.8}to{transform:scale(1.12);opacity:1}}
+  .headP{animation:headK 2.4s ease-in-out infinite alternate}
+
+  @keyframes portalK{from{transform:scale(.95);opacity:.82}to{transform:scale(1.06);opacity:1}}
+  .portal{animation:portalK 3.2s ease-in-out infinite alternate}
+
+  @keyframes auroraK{from{transform:translateX(-26px)}to{transform:translateX(26px)}}
+  .aurora{animation:auroraK 22s ease-in-out infinite alternate}
+
+  /* legend thunder bolt: flash window ~1.45-1.7s of 5s cycle */
+  @keyframes boltK{0%,28%{opacity:0}29%,30.5%{opacity:1}31.2%{opacity:.1}31.8%,33%{opacity:.95}34.5%,100%{opacity:0}}
+  .bolt{animation:boltK 5s linear infinite}
+  @keyframes errGlowK{from{opacity:.35}to{opacity:.8}}
+  .errGlow{animation:errGlowK 2.2s ease-in-out infinite alternate}
+  @keyframes workK{
+    0%,100%{transform:scale(.86) rotate(-8deg);opacity:.65}
+    45%{transform:scale(1.18) rotate(5deg);opacity:1}
+  }
+  .workPulse{transform-box:fill-box;transform-origin:center;animation:workK .9s cubic-bezier(.2,.8,.3,1) infinite}
+  @keyframes sparkK{0%{transform:translateY(8px) scale(.2);opacity:0}35%{opacity:1}100%{transform:translateY(-22px) scale(1);opacity:0}}
+  .workSpark{animation:sparkK 1.05s ease-out infinite}
+  @keyframes lockK{0%,100%{opacity:.45}50%{opacity:.7}}
+  .sleepLock{animation:lockK 3.2s ease-in-out infinite}
+  @keyframes sealK{0%{stroke-dashoffset:30;opacity:.5}100%{stroke-dashoffset:0;opacity:1}}
+  .doneSeal{animation:sealK 1.8s ease-out both}
+  @keyframes quakeK{0%,100%{transform:translate(0)}25%{transform:translate(-3px,1px)}50%{transform:translate(3px,-1px)}75%{transform:translate(-2px,-1px)}}
+  .errorQuake{animation:quakeK .34s steps(2,end) infinite}
+
+  /* ---------- HTML chrome ---------- */
+  .glass{background:linear-gradient(180deg,rgba(14,16,36,.80),rgba(10,11,26,.64));
+    border:1px solid rgba(255,217,138,.16);border-radius:12px;
+    box-shadow:0 8px 28px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05)}
+  #topbar{position:absolute;left:22px;right:22px;top:14px;height:54px;display:flex;
+    align-items:center;justify-content:space-between;padding:0 18px;z-index:5}
+  .tbL{display:flex;align-items:center;gap:12px}
+  .logo{font-size:16.5px;font-weight:700;color:#f2e7cf;letter-spacing:1.5px}
+  .logo b{color:#ffd98a}
+  .sep{width:1px;height:20px;background:linear-gradient(180deg,transparent,rgba(255,217,138,.4),transparent)}
+  .tag{font-size:10.5px;color:#ffd98a;border:1px solid rgba(255,217,138,.42);padding:3px 11px;
+    border-radius:999px;letter-spacing:2.5px;background:rgba(255,217,138,.07)}
+  .tbR{display:flex;align-items:center;gap:9px}
+  .chip{display:flex;gap:7px;align-items:center;padding:5px 12px;border-radius:999px;
+    font-size:12px;color:var(--txt);background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10)}
+  .chip i{width:7px;height:7px;border-radius:50%}
+  .chip b{font-size:13px}
+  .chip.cd{border-color:rgba(46,230,168,.35)} .chip.cd i{background:var(--done);box-shadow:0 0 8px 1px rgba(46,230,168,.7)} .chip.cd b{color:var(--done)}
+  .chip.cp{border-color:rgba(255,198,92,.35)} .chip.cp i{background:var(--prog);box-shadow:0 0 8px 1px rgba(255,198,92,.7)} .chip.cp b{color:var(--prog)}
+  .chip.ce{border-color:rgba(255,107,107,.30);opacity:.62} .chip.ce i{background:var(--err);box-shadow:0 0 7px 1px rgba(255,107,107,.5)} .chip.ce b{color:var(--err)}
+  .chip.cn{border-color:rgba(102,115,154,.4)} .chip.cn i{background:var(--pend);box-shadow:0 0 6px 1px rgba(102,115,154,.6)} .chip.cn b{color:#96a2c8}
+  .ringWrap{display:flex;align-items:center;gap:8px;padding:0 4px}
+  .rt{font-size:10.5px;color:var(--dim);letter-spacing:1.5px;writing-mode:horizontal-tb}
+  .live{display:flex;gap:7px;align-items:center;color:#ffe3ac;font-size:11.5px;letter-spacing:1.5px;
+    padding:5px 12px;border-radius:999px;border:1px solid rgba(255,217,138,.35);background:rgba(255,217,138,.06)}
+  @keyframes liveK{0%,100%{opacity:1;box-shadow:0 0 10px 2px rgba(255,217,138,.85)}50%{opacity:.45;box-shadow:0 0 4px 0 rgba(255,217,138,.3)}}
+  .live i{width:7px;height:7px;border-radius:50%;background:#ffd98a;animation:liveK 1.5s ease-in-out infinite}
+
+  #legend{position:absolute;left:22px;bottom:16px;display:flex;gap:16px;align-items:center;
+    padding:9px 16px;z-index:5}
+  .li{display:flex;align-items:center;gap:8px}
+  .lt{display:flex;flex-direction:column;line-height:1.25}
+  .lt b{font-size:12px;color:#e6ebf7;font-weight:600;letter-spacing:.5px}
+  .lt span{font-size:9.5px;color:var(--dim);letter-spacing:.8px}
+  .lgTitle{font-size:10px;color:var(--dim);letter-spacing:3px;margin-right:2px;writing-mode:vertical-rl;height:38px;text-align:center}
+
+  #caption{position:absolute;right:24px;bottom:24px;font-size:11.5px;color:rgba(214,222,244,.6);
+    letter-spacing:1px;z-index:5;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+  #caption b{color:rgba(255,217,138,.85);font-weight:600}
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important}
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+<div class="depth-layer depth-far" aria-hidden="true"></div>
+<div class="depth-layer depth-mid" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="depth-layer depth-near" aria-hidden="true">
+  <b style="left:2%;top:72%;animation-delay:-2s"></b>
+  <b style="left:34%;top:84%;animation-delay:-8s"></b>
+  <b style="left:70%;top:64%;animation-delay:-5s"></b>
+</div>
+<svg id="scene" viewBox="0 0 1600 900" width="1600" height="900">
+<defs>
+  <linearGradient id="skyG" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#1c1546"/><stop offset=".36" stop-color="#110d2e"/>
+    <stop offset=".7" stop-color="#0a0919"/><stop offset="1" stop-color="#06060f"/>
+  </linearGradient>
+  <radialGradient id="gateAmb2" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="rgba(255,216,150,.16)"/><stop offset=".55" stop-color="rgba(255,200,130,.05)"/><stop offset="1" stop-color="rgba(255,200,130,0)"/>
+  </radialGradient>
+  <radialGradient id="gateAmb" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="rgba(255,240,208,.38)"/><stop offset=".45" stop-color="rgba(255,206,120,.12)"/><stop offset="1" stop-color="rgba(255,206,120,0)"/>
+  </radialGradient>
+  <radialGradient id="inkCloud" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="rgba(25,21,50,.96)"/><stop offset=".55" stop-color="rgba(23,19,46,.8)"/><stop offset="1" stop-color="rgba(23,19,46,0)"/>
+  </radialGradient>
+  <linearGradient id="cloudRim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="rgba(255,214,140,.4)"/><stop offset=".6" stop-color="rgba(255,214,140,.05)"/><stop offset="1" stop-color="rgba(255,214,140,0)"/>
+  </linearGradient>
+  <linearGradient id="shaftG" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="rgba(255,236,196,.3)"/><stop offset="1" stop-color="rgba(255,236,196,0)"/>
+  </linearGradient>
+  <linearGradient id="colGhost" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="rgba(145,155,220,0)"/><stop offset=".5" stop-color="rgba(145,155,220,.13)"/><stop offset="1" stop-color="rgba(145,155,220,0)"/>
+  </linearGradient>
+  <linearGradient id="colLit" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="rgba(255,214,138,0)"/><stop offset=".5" stop-color="rgba(255,214,138,.4)"/><stop offset="1" stop-color="rgba(255,214,138,0)"/>
+  </linearGradient>
+  <radialGradient id="goldCore" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="#fff9e8"/><stop offset=".35" stop-color="rgba(255,217,138,.85)"/><stop offset="1" stop-color="rgba(255,217,138,0)"/>
+  </radialGradient>
+  <radialGradient id="doneCore" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="#ecfff7"/><stop offset=".4" stop-color="#2ee6a8"/><stop offset="1" stop-color="rgba(46,230,168,0)"/>
+  </radialGradient>
+  <radialGradient id="doneHalo" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="rgba(46,230,168,.45)"/><stop offset="1" stop-color="rgba(46,230,168,0)"/>
+  </radialGradient>
+  <radialGradient id="progCore" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="#fff6e2"/><stop offset=".4" stop-color="#ffc65c"/><stop offset="1" stop-color="rgba(255,198,92,0)"/>
+  </radialGradient>
+  <radialGradient id="progHalo" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="rgba(255,198,92,.5)"/><stop offset="1" stop-color="rgba(255,198,92,0)"/>
+  </radialGradient>
+  <radialGradient id="pendCore" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="#cdd6ee"/><stop offset=".45" stop-color="#66739a"/><stop offset="1" stop-color="rgba(102,115,154,0)"/>
+  </radialGradient>
+  <radialGradient id="pendHalo" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="rgba(102,115,154,.38)"/><stop offset="1" stop-color="rgba(102,115,154,0)"/>
+  </radialGradient>
+  <radialGradient id="errHalo" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="rgba(255,107,107,.5)"/><stop offset="1" stop-color="rgba(255,107,107,0)"/>
+  </radialGradient>
+  <linearGradient id="beamProg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="rgba(255,210,130,.5)"/><stop offset="1" stop-color="rgba(255,210,130,0)"/>
+  </linearGradient>
+  <linearGradient id="platTop" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#474c7a"/><stop offset="1" stop-color="#23264a"/>
+  </linearGradient>
+  <linearGradient id="platSide" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#2a2d52"/><stop offset="1" stop-color="#13152c"/>
+  </linearGradient>
+  <linearGradient id="bodyG" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#262a4e"/><stop offset="1" stop-color="#14162f"/>
+  </linearGradient>
+  <linearGradient id="roofG" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#40447466"/><stop offset=".25" stop-color="#3d4170"/><stop offset="1" stop-color="#181b36"/>
+  </linearGradient>
+  <linearGradient id="coneG" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="rgba(28,30,58,.9)"/><stop offset="1" stop-color="rgba(28,30,58,0)"/>
+  </linearGradient>
+  <radialGradient id="mistG" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="rgba(205,216,255,.16)"/><stop offset="1" stop-color="rgba(205,216,255,0)"/>
+  </radialGradient>
+  <radialGradient id="portalG" cx=".5" cy=".5" r=".5">
+    <stop offset="0" stop-color="#fffdf4"/><stop offset=".3" stop-color="#ffe9bd"/>
+    <stop offset=".65" stop-color="rgba(255,190,110,.45)"/><stop offset="1" stop-color="rgba(255,190,110,0)"/>
+  </radialGradient>
+  <radialGradient id="vig" cx=".5" cy=".46" r=".72">
+    <stop offset="0" stop-color="rgba(0,0,0,0)"/><stop offset=".62" stop-color="rgba(0,0,0,0)"/><stop offset="1" stop-color="rgba(2,3,10,.62)"/>
+  </radialGradient>
+  <linearGradient id="botShade" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="rgba(3,3,12,0)"/><stop offset="1" stop-color="rgba(3,3,12,.55)"/>
+  </linearGradient>
+  <linearGradient id="zhG" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff3d8"/><stop offset="1" stop-color="#eec27f"/>
+  </linearGradient>
+  <linearGradient id="bandG" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="rgba(24,20,48,0)"/><stop offset=".4" stop-color="rgba(24,20,48,.5)"/>
+    <stop offset=".72" stop-color="rgba(20,17,42,.55)"/><stop offset="1" stop-color="rgba(20,17,42,0)"/>
+  </linearGradient>
+  <linearGradient id="aurT" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="rgba(110,224,196,0)"/><stop offset=".5" stop-color="rgba(110,224,196,.5)"/><stop offset="1" stop-color="rgba(110,224,196,0)"/>
+  </linearGradient>
+  <linearGradient id="aurV" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="rgba(160,130,255,0)"/><stop offset=".5" stop-color="rgba(160,130,255,.45)"/><stop offset="1" stop-color="rgba(160,130,255,0)"/>
+  </linearGradient>
+  <marker id="arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+    <path d="M0,1 L8,5 L0,9 L2.6,5 Z" fill="#ffe0a1"/>
+  </marker>
+</defs>
+
+<!-- ================= BACKGROUND ================= -->
+<rect width="1600" height="900" fill="url(#skyG)"/>
+<circle cx="800" cy="140" r="460" fill="url(#gateAmb2)"/>
+<path class="aurora" d="M 120,210 Q 480,140 820,190 T 1520,150" stroke="url(#aurT)" stroke-width="64" fill="none" opacity=".085"/>
+<path class="aurora" style="animation-delay:-9s" d="M 60,300 Q 500,240 900,286 T 1560,250" stroke="url(#aurV)" stroke-width="46" fill="none" opacity=".075"/>
+<g id="stars"></g>
+<!-- distant floating islets -->
+<g opacity=".5">
+  <g transform="translate(286,178) scale(.9)" class="bobSlow">
+    <path d="M-34,0 Q0,-10 34,0 L20,14 Q0,24 -20,14 Z" fill="#131030"/>
+    <path d="M-12,-2 L-8,-16 L0,-4 Z" fill="#181440"/>
+    <circle cx="6" cy="-4" r="1.6" fill="#ffd98a" opacity=".8"/>
+  </g>
+  <g transform="translate(1382,242) scale(.66)" class="bobSlow" style="animation-delay:-4s">
+    <path d="M-34,0 Q0,-10 34,0 L20,14 Q0,24 -20,14 Z" fill="#12102c"/>
+    <circle cx="-4" cy="-3" r="1.8" fill="#9fe8cf" opacity=".7"/>
+  </g>
+</g>
+<!-- distant mountains -->
+<path d="M0,900 L0,846 Q120,806 260,842 Q400,812 560,850 Q700,824 860,852 Q1020,820 1180,848 Q1330,816 1600,844 L1600,900 Z" fill="#0b0a22" opacity=".9"/>
+<path d="M0,900 L0,872 Q200,838 420,868 Q640,844 900,872 Q1150,846 1600,870 L1600,900 Z" fill="#080718" opacity=".95"/>
+
+<!-- gate light shaft down through the sky -->
+<polygon points="787,150 813,150 823,402 777,402" fill="url(#shaftG)" opacity=".45"/>
+
+<!-- ================= PILLAR (三十三重天梯) ================= -->
+<g id="pillar">
+  <rect x="782" y="162" width="36" height="694" fill="url(#colGhost)"/>
+  <rect id="progressGlow" x="778" y="838" width="44" height="16" fill="url(#colLit)" class="shim" opacity=".8"/>
+  <rect id="progressCore" x="792" y="838" width="16" height="16" fill="url(#colLit)" class="shim" style="animation-delay:-1.4s"/>
+  <line id="progressTrail" x1="800" y1="852" x2="800" y2="838" stroke="rgba(255,232,180,.5)" stroke-width="2" stroke-dasharray="2 9" class="cflowUp"/>
+  <ellipse cx="800" cy="838" rx="64" ry="15" fill="url(#goldCore)" opacity=".38"/>
+  <g id="rungs"></g>
+  <g id="ticks"></g>
+  <g id="progressHead"></g>
+</g>
+
+<!-- ================= DEPENDENCY CONDUITS ================= -->
+<g id="conduits"></g>
+
+<rect x="0" y="382" width="1600" height="100" fill="url(#bandG)"/>
+<g id="cloudBack"></g>
+<g id="nodesLow"></g>
+<g id="cloudFront"></g>
+<g id="phaseBands"></g>
+<g id="nodesHigh"></g>
+
+<!-- ================= ASCENSION GATE ================= -->
+<g id="gate" transform="translate(800,116)">
+  <circle r="150" fill="url(#gateAmb)"/>
+  <g class="spin48" id="trigrams"></g>
+  <circle r="46" fill="none" stroke="rgba(255,217,138,.8)" stroke-width="1.6"/>
+  <circle r="40" fill="none" stroke="rgba(255,217,138,.3)" stroke-width="4" stroke-dasharray="1.5 6.5" class="spinRev60"/>
+  <ellipse rx="17" ry="29" fill="url(#portalG)" class="portal"/>
+  <g class="spin20" opacity=".85">
+    <path d="M 0,-33 A 33,33 0 0 1 33,0" fill="none" stroke="rgba(255,244,214,.75)" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M 0,33 A 33,33 0 0 1 -33,0" fill="none" stroke="rgba(255,244,214,.45)" stroke-width="1.4" stroke-linecap="round"/>
+  </g>
+  <g opacity=".7">
+    <line x1="0" y1="-52" x2="0" y2="-78" stroke="rgba(255,230,170,.6)" stroke-width="1"/>
+    <line x1="-26" y1="-46" x2="-38" y2="-66" stroke="rgba(255,230,170,.35)" stroke-width="1"/>
+    <line x1="26" y1="-46" x2="38" y2="-66" stroke="rgba(255,230,170,.35)" stroke-width="1"/>
+  </g>
+  <text x="-74" y="5" text-anchor="end" class="gateLab">飞升之门</text>
+</g>
+
+<g id="pulseLayer">
+  <g id="bead2" opacity="0"><circle r="5.5" fill="url(#goldCore)" opacity=".55"/></g>
+  <g id="bead" opacity="0"><circle r="10" fill="url(#goldCore)" opacity=".85"/><circle r="3.2" fill="#fff8e6"/></g>
+</g>
+
+<g id="motes"></g>
+<rect width="1600" height="900" fill="url(#vig)"/>
+<rect y="700" width="1600" height="200" fill="url(#botShade)"/>
+</svg>
+
+<!-- ================= HTML CHROME ================= -->
+<div id="topbar" class="glass">
+  <div class="tbL">
+    <svg width="22" height="22" viewBox="0 0 22 22">
+      <path d="M11,1.5 L19.5,11 L11,20.5 L2.5,11 Z" fill="none" stroke="#ffd98a" stroke-width="1.4"/>
+      <path d="M11,6 L15.5,11 L11,16 L6.5,11 Z" fill="url(#goldCore)"/>
+    </svg>
+    <span class="logo">Code<b>Viz</b></span>
+    <span class="sep"></span>
+    <span class="tag" id="projectTag">概念 F · 飞升天梯 ASCENSION</span>
+  </div>
+  <div class="tbR">
+    <span class="chip cd"><i></i>完成 <b id="statDone">3</b></span>
+    <span class="chip cp"><i></i>进行中 <b id="statProgress">5</b></span>
+    <span class="chip ce"><i></i>报错 <b id="statError">0</b></span>
+    <span class="chip cn"><i></i>未开始 <b id="statPending">2</b></span>
+    <span class="sep"></span>
+    <div class="ringWrap">
+      <svg width="38" height="38" viewBox="0 0 38 38">
+        <circle cx="19" cy="19" r="14.5" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="3.4"/>
+        <circle id="progressArc" cx="19" cy="19" r="14.5" fill="none" stroke="#ffd98a" stroke-width="3.4" stroke-linecap="round"
+          stroke-dasharray="27.33 63.77" transform="rotate(-90 19 19)"/>
+        <text id="progressPct" x="19" y="23" text-anchor="middle" style="font-size:10.5px;font-weight:700;fill:#ffe6b8;stroke:none">30%</text>
+      </svg>
+      <span class="rt">总进度</span>
+    </div>
+    <span class="live" id="syncState"><i></i><span>实时同步</span></span>
+  </div>
+</div>
+
+<div id="legend" class="glass">
+  <span class="lgTitle">图例</span>
+  <div class="li">
+    <svg width="42" height="40" viewBox="0 0 42 40">
+      <circle cx="21" cy="20" r="16" fill="url(#doneHalo)" opacity=".7"/>
+      <ellipse cx="21" cy="28" rx="12" ry="3.4" fill="url(#platTop)" stroke="#2ee6a8" stroke-width=".8" stroke-opacity=".8"/>
+      <path d="M 10.4,19 Q 14.5,25 19.2,25 L 22.8,25 Q 27.5,25 31.6,19 Q 25.5,15.5 21,15 Q 16.5,15.5 10.4,19 Z" fill="url(#roofG)" stroke="#2ee6a8" stroke-width=".8" stroke-opacity=".8"/>
+      <circle cx="21" cy="12" r="2" fill="url(#doneCore)" class="glowSteady"/>
+    </svg>
+    <div class="lt"><b>充能完成</b><span>done · 稳定辉光</span></div>
+  </div>
+  <div class="li">
+    <svg width="42" height="40" viewBox="0 0 42 40">
+      <circle cx="21" cy="20" r="16" fill="url(#progHalo)" opacity=".8" class="breathe"/>
+      <ellipse cx="21" cy="28" rx="12" ry="3.4" fill="url(#platTop)" stroke="#ffc65c" stroke-width=".8" stroke-opacity=".9"/>
+      <path d="M 10.4,19 Q 14.5,25 19.2,25 L 22.8,25 Q 27.5,25 31.6,19 Q 25.5,15.5 21,15 Q 16.5,15.5 10.4,19 Z" fill="url(#roofG)" stroke="#ffc65c" stroke-width=".8" stroke-opacity=".9"/>
+      <circle cx="21" cy="12" r="2" fill="url(#progCore)" class="flick"/>
+      <circle cx="17" cy="36" r="1.5" fill="#ffe2a8" class="qi"/>
+      <circle cx="25" cy="36" r="1.5" fill="#ffe2a8" class="qi" style="animation-delay:-1.2s"/>
+    </svg>
+    <div class="lt"><b>正在充能</b><span>progress · 灵气注入</span></div>
+  </div>
+  <div class="li">
+    <svg width="42" height="40" viewBox="0 0 42 40">
+      <g opacity=".72">
+        <ellipse cx="21" cy="28" rx="12" ry="3.4" fill="url(#platTop)" stroke="#66739a" stroke-width=".8"/>
+        <path d="M 10.4,19 Q 14.5,25 19.2,25 L 22.8,25 Q 27.5,25 31.6,19 Q 25.5,15.5 21,15 Q 16.5,15.5 10.4,19 Z" fill="url(#roofG)" stroke="#66739a" stroke-width=".8"/>
+        <circle cx="21" cy="12" r="2" fill="url(#pendCore)"/>
+      </g>
+      <ellipse cx="19" cy="18" rx="15" ry="5" fill="url(#mistG)" class="mist"/>
+    </svg>
+    <div class="lt"><b>云隐待启</b><span>pending · 休眠</span></div>
+  </div>
+  <div class="li">
+    <svg width="42" height="40" viewBox="0 0 42 40">
+      <circle cx="21" cy="16" r="14" fill="url(#errHalo)" class="errGlow"/>
+      <g>
+        <circle cx="15" cy="15" r="6" fill="#33131f" stroke="#ff6b6b" stroke-opacity=".55" stroke-width=".8"/>
+        <circle cx="23" cy="12.5" r="7.4" fill="#3a1622" stroke="#ff6b6b" stroke-opacity=".55" stroke-width=".8"/>
+        <circle cx="29" cy="16.5" r="5.2" fill="#33131f" stroke="#ff6b6b" stroke-opacity=".55" stroke-width=".8"/>
+        <rect x="9" y="14.5" width="26" height="5" rx="2.5" fill="#33131f"/>
+      </g>
+      <polyline points="24,20 19.5,27 23,27 18.5,35" fill="none" stroke="#ff6b6b" stroke-width="1.8" stroke-linecap="round" class="bolt"/>
+    </svg>
+    <div class="lt"><b>渡劫雷云</b><span>error · 异化警示</span></div>
+  </div>
+</div>
+
+<div id="caption">◈ <b>海拔即执行顺序</b> · 光路即依赖流向 · 每一次 commit 化作光珠沿灵脉注入充能宫阙</div>
+</div>
+
+<script>
+(function(){
+'use strict';
+var SVGNS='http://www.w3.org/2000/svg';
+function E(tag,attrs,parent){var e=document.createElementNS(SVGNS,tag);for(var k in attrs)e.setAttribute(k,String(attrs[k]));if(parent)parent.appendChild(e);return e;}
+var _s=42;function rnd(){_s=(_s*1103515245+12345)%2147483648;return _s/2147483648;}
+function $(id){return document.getElementById(id);}
+function clamp(n,min,max){return Math.max(min,Math.min(max,n));}
+function num(value,fallback){var n=Number(value);return Number.isFinite(n)&&n>=0?n:fallback;}
+function titleFor(parent,text){var title=E('title',{},parent);title.textContent=text;return title;}
+function shortText(value,max){
+  var text=String(value==null?'':value);
+  return text.length>max?text.slice(0,Math.max(1,max-1))+'…':text;
+}
+function stringList(value,splitWhitespace){
+  var source=Array.isArray(value)?value:(value==null?[]:[value]),out=[];
+  source.forEach(function(item){
+    if(item&&typeof item==='object')item=item.id||item.name||'';
+    String(item||'').split(splitWhitespace?/[,，\s]+/:/[,，]+/).forEach(function(part){
+      part=part.trim();if(part)out.push(part);
+    });
+  });
+  return out;
+}
+function stateOf(value){
+  value=String(value||'pending').toLowerCase();
+  if(value==='done')return'done';
+  if(value==='in-progress'||value==='inprogress'||value==='progress'||value==='prog')return'prog';
+  if(value==='error'||value==='failed'||value==='fail')return'err';
+  return'pend';
+}
+
+var DEMO_DATA={
+  projectId:'ascension-demo',
+  projectName:'飞升天梯静态演示',
+  phases:[
+    {id:'demo-low',name:'阶段收敛',tasks:['T001','T002','T003','T004','T005','T006','T007']},
+    {id:'demo-high',name:'CodeViz 验收',tasks:['T101','T102','T103']}
+  ],
+  tasks:[
+    {id:'T001',name:'梳理 Phase 15 closeout',status:'done',phase:'demo-low',files:['tasks.md']},
+    {id:'T002',name:'收敛 script rewrite',status:'in-progress',phase:'demo-low',files:['rewrite.js','fixtures.js']},
+    {id:'T003',name:'补齐 pipeline fixtures',status:'in-progress',phase:'demo-low',depends:['T002'],files:['pipeline.test.js','a.json','b.json']},
+    {id:'T004',name:'验证 script rewrite',status:'in-progress',phase:'demo-low',depends:['T003'],files:['rewrite.test.js']},
+    {id:'T005',name:'验证 orchestrator',status:'pending',phase:'demo-low',depends:['T004'],files:['orchestrator.js','orchestrator.test.js']},
+    {id:'T006',name:'验证 publish dry-run',status:'in-progress',phase:'demo-low',files:['publish.test.js']},
+    {id:'T007',name:'收敛 Remotion Bili',status:'in-progress',phase:'demo-low',files:['a.ts','b.ts','c.ts','d.ts','e.ts']},
+    {id:'T101',name:'补齐 CodeViz skill',status:'done',phase:'demo-high',files:['SKILL.md']},
+    {id:'T102',name:'补齐 CodeViz 浏览器',status:'done',phase:'demo-high',depends:['T101'],files:['client.js','index.html']},
+    {id:'T103',name:'启动 CodeViz 服务',status:'pending',phase:'demo-high',depends:['T102'],files:['server.js']}
+  ],
+  stats:{total:10,done:3,pending:2,inProgress:5,error:0}
+};
+
+function normalizeData(raw){
+  raw=raw&&typeof raw==='object'?raw:{};
+  var rawPhases=Array.isArray(raw.phases)?raw.phases:[];
+  var rawTasks=Array.isArray(raw.tasks)?raw.tasks:[];
+  var phases=[],phaseBySource=Object.create(null),phaseByKey=Object.create(null);
+  var membership=Object.create(null),usedPhaseKeys=Object.create(null);
+
+  function addPhase(sourceId,name,taskRefs){
+    var base=String(sourceId||('phase-'+(phases.length+1))),key=base,suffix=2;
+    while(usedPhaseKeys[key])key=base+'-'+suffix++;
+    usedPhaseKeys[key]=true;
+    var phase={id:base,key:key,name:String(name||base),tasks:[]};
+    phases.push(phase);phaseByKey[key]=phase;
+    if(!phaseBySource[base])phaseBySource[base]=phase;
+    stringList(taskRefs,true).forEach(function(id){if(!membership[id])membership[id]=phase;});
+    return phase;
+  }
+
+  rawPhases.forEach(function(phase,index){
+    phase=phase&&typeof phase==='object'?phase:{};
+    addPhase(phase.id||('phase-'+(index+1)),phase.name||phase.id||('阶段 '+(index+1)),phase.tasks);
+  });
+
+  var tasks=[],taskById=Object.create(null);
+  rawTasks.forEach(function(task,index){
+    task=task&&typeof task==='object'?task:{};
+    var id=String(task.id||('TASK-'+String(index+1).padStart(3,'0')));
+    if(taskById[id])return;
+    var phaseValue=task.phase&&typeof task.phase==='object'?(task.phase.id||task.phase.name):task.phase;
+    var phase=phaseValue!=null?phaseBySource[String(phaseValue)]:null;
+    if(!phase&&membership[id])phase=membership[id];
+    var normalized={
+      id:id,
+      key:'task-'+index,
+      name:String(task.name||id),
+      st:stateOf(task.status),
+      phaseKey:phase?phase.key:null,
+      phaseSource:phaseValue==null?'':String(phaseValue),
+      depends:stringList(task.depends,true),
+      files:stringList(task.files,false),
+      raw:task
+    };
+    tasks.push(normalized);taskById[id]=normalized;
+  });
+
+  tasks.forEach(function(task){
+    if(task.phaseKey)return;
+    if(task.phaseSource){
+      var phase=phaseBySource[task.phaseSource]||addPhase(task.phaseSource,task.phaseSource,[]);
+      task.phaseKey=phase.key;
+    }
+  });
+  var unassigned=tasks.filter(function(task){return!task.phaseKey;});
+  if(unassigned.length){
+    var loose=addPhase('__unassigned__','未分组任务',[]);
+    unassigned.forEach(function(task){task.phaseKey=loose.key;});
+  }
+  if(!phases.length)addPhase('__empty__','暂无阶段',[]);
+  tasks.forEach(function(task){
+    var phase=phaseByKey[task.phaseKey];
+    if(phase)phase.tasks.push(task);
+  });
+
+  var computed={total:tasks.length,done:0,pending:0,inProgress:0,error:0};
+  tasks.forEach(function(task){
+    if(task.st==='done')computed.done++;
+    else if(task.st==='prog')computed.inProgress++;
+    else if(task.st==='err')computed.error++;
+    else computed.pending++;
+  });
+  var supplied=raw.stats&&typeof raw.stats==='object'?raw.stats:null;
+  var stats=supplied?{
+    total:num(supplied.total,computed.total),
+    done:num(supplied.done,computed.done),
+    pending:num(supplied.pending,computed.pending),
+    inProgress:num(supplied.inProgress,computed.inProgress),
+    error:num(supplied.error,computed.error)
+  }:computed;
+  return{
+    projectId:String(raw.projectId||''),
+    projectName:String(raw.projectName||'未命名项目'),
+    phases:phases,
+    tasks:tasks,
+    stats:stats
+  };
+}
+
+var HAS_PAYLOAD=!!(window.__CODEVIZ_THEME_DATA__&&typeof window.__CODEVIZ_THEME_DATA__==='object');
+var DATA=normalizeData(HAS_PAYLOAD?window.__CODEVIZ_THEME_DATA__:DEMO_DATA);
+var overall=DATA.stats.total?clamp(DATA.stats.done/DATA.stats.total,0,1):0;
+document.title='CodeViz · '+DATA.projectName+' · 飞升天梯';
+$('projectTag').textContent=DATA.projectName+' · 飞升天梯 ASCENSION';
+$('statDone').textContent=DATA.stats.done;
+$('statProgress').textContent=DATA.stats.inProgress;
+$('statError').textContent=DATA.stats.error;
+$('statPending').textContent=DATA.stats.pending;
+$('progressPct').textContent=Math.round(overall*100)+'%';
+$('progressArc').setAttribute('stroke-dasharray',(91.11*overall).toFixed(2)+' '+(91.11*(1-overall)).toFixed(2));
+$('syncState').querySelector('span').textContent=HAS_PAYLOAD?'实时同步':'静态演示';
+document.querySelector('.chip.ce').style.opacity=DATA.stats.error?1:.62;
+
+/* ---------- stars ---------- */
+var stars=$('stars');
+for(var i=0;i<92;i++){
+  var sx=rnd()*1600, sy=rnd()*620, sr=0.45+rnd()*0.85, sg=rnd()<.18, d1=rnd(), d2=rnd();
+  if(sx>420&&sx<620&&sy>555&&sy<600) continue; /* keep T004 label clean */
+  var c=E('circle',{cx:sx.toFixed(1),cy:sy.toFixed(1),r:sr.toFixed(2),
+    fill:sg?'#ffe2ae':'#cdd8ff','class':'tw'},stars);
+  c.style.animationDelay=(-d1*7).toFixed(2)+'s';
+  c.style.animationDuration=(3+d2*4.5).toFixed(2)+'s';
+}
+
+/* ---------- rising motes ---------- */
+var mo=$('motes');
+for(i=0;i<15;i++){
+  c=E('circle',{cx:(20+rnd()*1560).toFixed(1),cy:(300+rnd()*540).toFixed(1),r:(0.9+rnd()*1.4).toFixed(2),
+    fill:'#ffdf9e','class':'mote'},mo);
+  c.style.animationDelay=(-rnd()*26).toFixed(2)+'s';
+  c.style.animationDuration=(15+rnd()*13).toFixed(2)+'s';
+}
+
+/* ---------- cloud sea ---------- */
+function cloudLayer(gid,n,yMin,yMax,rxMin,rxMax,coreOp,rimOp,dur,dirRight){
+  var g=$(gid), strip=E('g',{},g), items=[],j;
+  for(j=0;j<n;j++){
+    items.push([rnd()*1600, yMin+rnd()*(yMax-yMin), rxMin+rnd()*(rxMax-rxMin)]);
+  }
+  [0,1600].forEach(function(off){
+    var gg=E('g',{transform:'translate('+off+',0)'},strip);
+    items.forEach(function(it){
+      var cx=it[0],cy=it[1],rx=it[2],ry=rx*(0.16+0.07*((cx*7)%1));
+      var jit=0.68+0.36*((cx*13)%1);
+      E('ellipse',{cx:cx.toFixed(1),cy:cy.toFixed(1),rx:rx.toFixed(1),ry:ry.toFixed(1),fill:'url(#inkCloud)',opacity:(coreOp*jit).toFixed(2)},gg);
+      E('ellipse',{cx:cx.toFixed(1),cy:(cy-ry*0.6).toFixed(1),rx:(rx*0.7).toFixed(1),ry:(ry*0.5).toFixed(1),fill:'url(#cloudRim)',opacity:(rimOp*jit).toFixed(2)},gg);
+    });
+  });
+  strip.style.animation=(dirRight?'driftR':'driftL')+' '+dur+'s linear infinite';
+}
+cloudLayer('cloudBack',15,400,442,140,250,.62,.22,150,false);
+cloudLayer('cloudFront',12,426,468,120,220,.72,.4,95,true);
+
+/* ---------- pillar rungs (33) + ticks ---------- */
+var rungs=$('rungs'), yb=838, yt=186, N=33, step=(yb-yt)/(N-1);
+var litCount=Math.round(overall*N),headY=yb-(yb-yt)*overall;
+for(i=0;i<N;i++){
+  var y=yb-i*step, lit=i<litCount;
+  E('line',{x1:785,y1:y.toFixed(1),x2:815,y2:y.toFixed(1),
+    stroke:lit?'#ffd98a':'#5b6490','stroke-width':lit?2:1.1,opacity:lit?.92:.3,'class':lit?'shim':''},rungs);
+  if(lit){E('circle',{cx:785,cy:y.toFixed(1),r:1.3,fill:'#fff1cf'},rungs);
+          E('circle',{cx:815,cy:y.toFixed(1),r:1.3,fill:'#fff1cf'},rungs);}
+}
+$('progressGlow').setAttribute('y',headY.toFixed(1));
+$('progressGlow').setAttribute('height',(854-headY).toFixed(1));
+$('progressCore').setAttribute('y',headY.toFixed(1));
+$('progressCore').setAttribute('height',(854-headY).toFixed(1));
+$('progressTrail').setAttribute('y2',headY.toFixed(1));
+var tg=$('ticks');
+[25,50,75,100].forEach(function(p){
+  var ty=yb-(yb-yt)*(p/100);
+  E('line',{x1:820,y1:ty.toFixed(1),x2:828,y2:ty.toFixed(1),stroke:'#8b93bb',opacity:.4,'stroke-width':1},tg);
+  var t=E('text',{x:832,y:(ty+3.5).toFixed(1),'class':'tickLab'},tg);
+  t.textContent=p+'%';
+});
+var ph=$('progressHead');
+var phg=E('g',{transform:'translate(800,'+headY.toFixed(1)+')'},ph);
+var hplate=E('g',{transform:'translate(0,-28)'},phg);
+E('rect',{x:-92,y:-17,width:184,height:24,rx:12,fill:'rgba(10,12,29,.9)',stroke:'rgba(255,217,138,.35)','stroke-width':1},hplate);
+var htext=E('text',{x:0,y:0,'text-anchor':'middle','class':'plaq'},hplate);
+htext.textContent='已完成 '+DATA.stats.done+' / '+DATA.stats.total+' · '+Math.round(overall*100)+'%';
+var hg=E('g',{'class':'headP'},phg);
+E('circle',{r:13,fill:'url(#goldCore)',opacity:.9},hg);
+E('circle',{r:4,fill:'#fff6de'},hg);
+if(overall<1)E('circle',{cx:800,cy:headY+34,r:3.2,fill:'#fff3d6','class':'climber'},ph);
+var q1=E('circle',{cx:-6,cy:-6,r:1.8,fill:'#ffe8c0',opacity:0,'class':'qi'},phg);
+var q2=E('circle',{cx:7,cy:-8,r:1.5,fill:'#ffe8c0',opacity:0,'class':'qi'},phg);
+q2.style.animationDelay='-1.1s';
+
+/* ---------- gate trigrams (八卦符环) ---------- */
+var TRI=[[1,1,1],[0,1,1],[1,0,1],[1,1,0],[0,0,1],[0,1,0],[1,0,0],[0,0,0]];
+var tri=$('trigrams');
+TRI.forEach(function(pat,k){
+  var g=E('g',{transform:'rotate('+(k*45)+') translate(0,-58)',opacity:.9},tri);
+  pat.forEach(function(solid,j){
+    var yy=j*4.6-4.6;
+    if(solid){E('rect',{x:-6,y:yy,width:12,height:2,rx:1,fill:'#ffd98a'},g);}
+    else{E('rect',{x:-6,y:yy,width:4.6,height:2,rx:1,fill:'#ffd98a'},g);
+         E('rect',{x:1.4,y:yy,width:4.6,height:2,rx:1,fill:'#ffd98a'},g);}
+  });
+});
+
+var COL={done:'#2ee6a8',prog:'#ffc65c',pend:'#66739a',err:'#ff6b6b'};
+/* ---------- payload-driven phases + altitude layout ---------- */
+var MAX_PER_ROW=4,VIEW_TOP=205,VIEW_BOTTOM=816;
+var totalRows=DATA.phases.reduce(function(sum,phase){
+  phase.rows=Math.max(1,Math.ceil(phase.tasks.length/MAX_PER_ROW));
+  return sum+phase.rows;
+},0);
+var rowHeight=(VIEW_BOTTOM-VIEW_TOP)/Math.max(1,totalRows);
+var density=clamp(rowHeight/82,.68,1);
+var phaseCursor=VIEW_BOTTOM,layouts=[];
+
+function phaseStats(phase){
+  var result={total:phase.tasks.length,done:0,prog:0,pend:0,err:0};
+  phase.tasks.forEach(function(task){result[task.st]++;});
+  return result;
+}
+function laneXs(count,flip){
+  if(count===1)return[flip?950:650];
+  if(count===2)return[650,950];
+  if(count===3)return flip?[650,900,1130]:[470,700,950];
+  return[470,700,900,1130];
+}
+function renderPhase(phase,index,top,bottom){
+  var g=E('g',{'data-phase-id':phase.id},$('phaseBands'));
+  titleFor(g,phase.name);
+  var center=(top+bottom)/2,ps=phaseStats(phase),ratio=ps.total?ps.done/ps.total:0;
+  E('path',{d:'M 202,'+center.toFixed(1)+' Q 500,'+(center-8).toFixed(1)+' 774,'+center.toFixed(1),'class':'phaseRail'},g);
+  E('circle',{cx:776,cy:center.toFixed(1),r:3.2,fill:COL[ps.err?'err':(ps.prog?'prog':(ps.total&&ps.done===ps.total?'done':'pend'))],opacity:.9},g);
+  E('rect',{x:24,y:(center-24).toFixed(1),width:178,height:48,rx:9,'class':'phasePlate'},g);
+  var pi=E('text',{x:36,y:(center-8).toFixed(1),'class':'phaseIndex'},g);
+  pi.textContent='PHASE '+String(index+1).padStart(2,'0');
+  var pn=E('text',{x:36,y:(center+7).toFixed(1),'class':'phaseName'},g);
+  pn.textContent=shortText(phase.name,18);
+  var pm=E('text',{x:190,y:(center+7).toFixed(1),'text-anchor':'end','class':'phaseMeta'},g);
+  pm.textContent=ps.done+' / '+ps.total+' · '+Math.round(ratio*100)+'%';
+  E('rect',{x:36,y:(center+14).toFixed(1),width:154,height:4,rx:2,fill:'rgba(255,255,255,.08)'},g);
+  E('rect',{x:36,y:(center+14).toFixed(1),width:(154*ratio).toFixed(1),height:4,rx:2,fill:ratio===1?COL.done:COL.prog},g);
+}
+
+DATA.phases.forEach(function(phase,phaseIndex){
+  var bandBottom=phaseCursor,bandTop=bandBottom-phase.rows*rowHeight;
+  renderPhase(phase,phaseIndex,bandTop,bandBottom);
+  for(var row=0;row<phase.rows;row++){
+    var chunk=phase.tasks.slice(row*MAX_PER_ROW,(row+1)*MAX_PER_ROW);
+    var xs=laneXs(chunk.length,(phaseIndex+row)%2===1);
+    var rowY=bandBottom-(row+.5)*rowHeight;
+    chunk.forEach(function(task,j){
+      layouts.push({
+        task:task,
+        phase:phase,
+        x:xs[j],
+        y:rowY+((chunk.length-1)/2-j)*7*density,
+        scale:density
+      });
+    });
+  }
+  phaseCursor=bandTop;
+});
+
+var RAD={1:24,2:30,3:35,5:45}, TIERS={1:1,2:1,3:2,5:3}, TW={1:13,2:17,3:21,5:28}, BH={1:10,2:14,3:16,5:20};
+var CORE={done:'url(#doneCore)',prog:'url(#progCore)',pend:'url(#pendCore)',err:'#ff6b6b'};
+var HALO={done:'url(#doneHalo)',prog:'url(#progHalo)',pend:'url(#pendHalo)',err:'url(#errHalo)'};
+var STATUS={done:'已完成',prog:'加工中',pend:'未开始',err:'报错'};
+var STATUS_ICON={done:'✓',prog:'⚒',pend:'▢',err:'⚡'};
+var flashTargets=Object.create(null),dependencyPaths=[];
+function roofPath(w){
+  return 'M '+(-w*1.18)+',-6 Q '+(-w*0.72)+',2 '+(-w*0.2)+',2 L '+(w*0.2)+',2 Q '+(w*0.72)+',2 '+(w*1.18)+',-6 Q '+(w*0.5)+',-10 0,-11 Q '+(-w*0.5)+',-10 '+(-w*1.18)+',-6 Z';
+}
+function taskTier(task){
+  var count=Math.max(1,task.files.length);
+  return count>=5?5:(count>=3?3:(count>=2?2:1));
+}
+function canonicalTaskId(id){
+  var match=String(id||'').match(/^T0*(\d+)$/i);
+  return match?'T'+String(Number(match[1])).padStart(3,'0'):String(id||'');
+}
+function dependencyCurve(source,target){
+  var sameSide=(source.x<800)===(target.x<800);
+  var qx=sameSide?(source.x<800?Math.min(source.x,target.x)-75:Math.max(source.x,target.x)+75):800;
+  var qy=(source.y+target.y)/2-(Math.abs(source.y-target.y)<28?48:12);
+  return'M '+source.x.toFixed(1)+','+source.y.toFixed(1)+' Q '+qx.toFixed(1)+','+qy.toFixed(1)+' '+target.x.toFixed(1)+','+target.y.toFixed(1);
+}
+
+var layoutById=Object.create(null);
+layouts.forEach(function(layout){
+  layoutById[layout.task.id]=layout;
+  layoutById[canonicalTaskId(layout.task.id)]=layout;
+});
+var seenEdges=Object.create(null),conduits=$('conduits');
+layouts.forEach(function(target){
+  target.task.depends.forEach(function(depId){
+    var source=layoutById[depId]||layoutById[canonicalTaskId(depId)];
+    if(!source||source===target)return;
+    var edgeKey=source.task.key+'>'+target.task.key;
+    if(seenEdges[edgeKey])return;
+    seenEdges[edgeKey]=true;
+    var d=dependencyCurve(source,target);
+    E('path',{d:d,'class':'cglow'},conduits);
+    E('path',{d:d,'class':'cbase'},conduits);
+    var flow=E('path',{d:d,'class':'cflow dep-'+target.task.st,'marker-end':'url(#arrow)',
+      'data-dependency-from':source.task.id,'data-dependency-to':target.task.id},conduits);
+    titleFor(flow,source.task.id+' → '+target.task.id);
+    dependencyPaths.push({path:flow,targetKey:target.task.key,targetState:target.task.st});
+  });
+});
+
+function renderTask(layout,idx){
+  var n=layout.task,load=taskTier(n);
+  var parent=$('nodesHigh');
+  var R=RAD[load],c=COL[n.st],py=R*.30;
+  var outer=E('g',{
+    transform:'translate('+layout.x.toFixed(1)+','+layout.y.toFixed(1)+') scale('+layout.scale.toFixed(3)+')',
+    'class':'task-node task-'+n.st,
+    'data-task-id':n.id,
+    'data-status':n.st==='prog'?'in-progress':(n.st==='pend'?'pending':(n.st==='err'?'error':'done')),
+    'data-phase':layout.phase.id,
+    role:'img',
+    'aria-label':n.id+' '+n.name+'，'+STATUS[n.st]
+  },parent);
+  titleFor(outer,n.id+' · '+n.name+' · '+STATUS[n.st]);
+  var bob=E('g',{'class':'bob'},outer); bob.style.animationDelay=(-idx*0.83).toFixed(2)+'s';
+  var inner=E('g',{'class':n.st==='pend'?'pendGroup':(n.st==='err'?'errorQuake':'')},bob);
+
+  /* big soft halo (double-layer glow: big) */
+  var halo=E('circle',{r:R*1.9,fill:HALO[n.st],'class':'breathe'},inner);
+  halo.style.animationDuration=n.st==='prog'?'2.6s':(n.st==='done'?'5s':'8s');
+  halo.style.animationDelay=(-idx*0.6)+'s';
+  if(n.st==='pend')halo.setAttribute('opacity','.5');
+
+  /* charging beam + qi particles (progress) */
+  if(n.st==='prog'){
+    var bh2=R+30;
+    E('rect',{x:-3.5,y:py+8,width:7,height:bh2,fill:'url(#beamProg)',opacity:.5,'class':'flick'},inner);
+    [[-8,0],[1,-0.8],[8,-1.6]].forEach(function(q){
+      var p=E('circle',{cx:q[0],cy:py+28,r:2.1,fill:'#ffe2a8',opacity:0,'class':'qi'},inner);
+      p.style.animationDelay=(q[1]-idx*0.3).toFixed(2)+'s';
+    });
+    /* unmistakable construction activity: orbiting tool ring + flying sparks */
+    var wg=E('g',{'class':'workPulse'},inner);
+    E('path',{d:'M '+(-R*.72)+',0 A '+(R*.72)+','+(R*.72)+' 0 0 1 '+(R*.72)+',0',
+      fill:'none',stroke:'#fff0c8','stroke-width':3.4,'stroke-linecap':'round','stroke-dasharray':'5 6'},wg);
+    E('path',{d:'M -8,-'+(R*.72)+' L 0,-'+(R*.9)+' L 8,-'+(R*.72),
+      fill:'none',stroke:'#ffc65c','stroke-width':3,'stroke-linecap':'round','stroke-linejoin':'round'},wg);
+    [-13,0,13].forEach(function(sx2,si){
+      var sp=E('circle',{cx:sx2,cy:-R*.05,r:2.2,fill:'#fff2c7','class':'workSpark'},inner);
+      sp.style.animationDelay=(-si*.28-idx*.11)+'s';
+    });
+  }
+
+  /* rotating rune ring, radius = load */
+  var ringG=E('g',{'class':'spin'},inner);
+  ringG.style.animationDuration=n.st==='prog'?'12s':(n.st==='done'?'34s':'80s');
+  E('circle',{r:R,fill:'none',stroke:c,'stroke-width':1.1,'stroke-dasharray':'5 9',opacity:n.st==='pend'?.5:.55},ringG);
+  for(var d=0;d<3;d++){
+    E('rect',{x:-2.1,y:-2.1,width:4.2,height:4.2,fill:c,opacity:n.st==='pend'?.6:.9,
+      transform:'rotate('+(d*120)+') translate('+R+',0) rotate(45)'},ringG);
+  }
+
+  /* charge arc (progress) */
+  if(n.st==='prog'){
+    var r2=R*0.74, Cc=2*Math.PI*r2;
+    var ag=E('g',{'class':'spinFast'},inner);
+    ag.style.animationDelay=(-idx*0.7)+'s';
+    E('circle',{r:r2,fill:'none',stroke:c,'stroke-width':2.3,'stroke-linecap':'round',
+      'stroke-dasharray':(Cc*0.34).toFixed(1)+' '+(Cc*0.66).toFixed(1),opacity:.85},ag);
+  }
+
+  /* under glow + hanging cone + platform */
+  E('ellipse',{cx:0,cy:py+7,rx:R*0.95,ry:R*0.3,fill:HALO[n.st],opacity:.55},inner);
+  E('path',{d:'M '+(-R*0.5)+','+(py+3)+' L 0,'+(py+R*0.55)+' L '+(R*0.5)+','+(py+3)+' Z',fill:'url(#coneG)',opacity:.85},inner);
+  E('ellipse',{cx:0,cy:py,rx:R*0.92,ry:R*0.27,fill:'url(#platSide)'},inner);
+  E('ellipse',{cx:0,cy:py-3,rx:R*0.92,ry:R*0.26,fill:'url(#platTop)',stroke:c,'stroke-width':1,'stroke-opacity':n.st==='pend'?.55:.75},inner);
+
+  /* palace body */
+  var bw=TW[load]*1.25,bh=BH[load],bTop=py-3-bh;
+  E('path',{d:'M '+(-bw*0.5)+','+(py-3)+' L '+(-bw*0.42)+','+bTop+' L '+(bw*0.42)+','+bTop+' L '+(bw*0.5)+','+(py-3)+' Z',
+    fill:'url(#bodyG)',stroke:'rgba(255,255,255,.07)','stroke-width':.6},inner);
+  var doorFill=n.st==='pend'?'#2c3350':(n.st==='done'?'#b9ffe4':'#ffe3ad');
+  E('rect',{x:-2.6,y:py-3-bh*0.72,width:5.2,height:bh*0.72,rx:1.2,fill:doorFill,
+    opacity:n.st==='pend'?.8:.95,'class':n.st==='prog'?'doorFlick':''},inner);
+  if(load>=2){
+    E('rect',{x:-bw*0.34,y:py-3-bh*0.55,width:3,height:3.4,rx:.6,fill:doorFill,opacity:.75},inner);
+    E('rect',{x:bw*0.34-3,y:py-3-bh*0.55,width:3,height:3.4,rx:.6,fill:doorFill,opacity:.75},inner);
+  }
+
+  /* roof tiers */
+  var ty=bTop+1,w=TW[load],t;
+  for(t=0;t<TIERS[load];t++){
+    E('path',{d:roofPath(w),transform:'translate(0,'+ty+')',fill:'url(#roofG)',
+      stroke:c,'stroke-width':1.05,'stroke-opacity':n.st==='pend'?.55:.85},inner);
+    if(t<TIERS[load]-1){ty-=13;w*=0.76;}
+  }
+
+  /* finial (double-layer glow: core) */
+  var fy=ty-15;
+  E('circle',{r:7.5,cy:fy,fill:HALO[n.st],opacity:n.st==='pend'?.3:.8,'class':'breathe'},inner);
+  E('circle',{r:2.4,cy:fy,fill:CORE[n.st],'class':n.st==='done'?'glowSteady':(n.st==='prog'?'flick':''),opacity:n.st==='pend'?.7:1},inner);
+
+  flashTargets[n.key]=E('circle',{r:R*1.35,fill:n.st==='err'?'url(#errHalo)':'url(#progHalo)',opacity:0},inner);
+
+  /* mist for pending */
+  if(n.st==='pend'){
+    /* hollow dormant shell and a literal lock */
+    E('circle',{r:R*.68,fill:'rgba(5,6,16,.72)',stroke:'#8290bb','stroke-width':2.2,
+      'stroke-dasharray':'2 7',opacity:.9},inner);
+    var lock=E('g',{'class':'sleepLock',transform:'translate(0,-2)'},inner);
+    E('path',{d:'M -6,-2 V -7 A 6,6 0 0 1 6,-7 V -2',fill:'none',stroke:'#b7c1df','stroke-width':2.4},lock);
+    E('rect',{x:-8,y:-2,width:16,height:13,rx:3,fill:'#171b33',stroke:'#9ba8cc','stroke-width':1.6},lock);
+    E('circle',{cx:0,cy:3,r:1.8,fill:'#9ba8cc'},lock);
+    E('ellipse',{cx:-6,cy:-6,rx:R*1.55,ry:R*0.42,fill:'url(#mistG)',opacity:.55,'class':'mist'},inner);
+    var m2=E('ellipse',{cx:10,cy:6,rx:R*1.2,ry:R*0.36,fill:'url(#mistG)',opacity:.45,'class':'mist r'},inner);
+    m2.style.animationDelay='-4s';
+  }
+  if(n.st==='done'){
+    /* completed step is sealed with a fixed, high-contrast check */
+    E('circle',{r:R*.48,fill:'rgba(5,32,29,.9)',stroke:'#75ffd0','stroke-width':2.2},inner);
+    E('path',{d:'M '+(-R*.23)+',0 L '+(-R*.05)+','+(R*.18)+' L '+(R*.27)+','+(-R*.2),
+      fill:'none',stroke:'#eafff7','stroke-width':4.2,'stroke-linecap':'round','stroke-linejoin':'round',
+      'stroke-dasharray':30,'class':'doneSeal'},inner);
+  }
+  if(n.st==='err'){
+    /* dormant in current data, ready for error tasks: red thunder fracture */
+    E('circle',{r:R*.9,fill:'rgba(70,10,22,.7)',stroke:'#ff6b6b','stroke-width':3},inner);
+    E('path',{d:'M '+(-R*.55)+','+(-R*.5)+' L -4,-5 L -13,5 L 4,3 L -2,'+(R*.55)+' L '+(R*.55)+',-8',
+      fill:'none',stroke:'#ffb0a8','stroke-width':4,'stroke-linejoin':'round','class':'bolt'},inner);
+  }
+
+  /* fixed label plate: full name remains available in the SVG title/ARIA label */
+  var lg=E('g',{'class':'task-label'},outer),labelW=214,labelH=54,left=layout.x<800;
+  var lx=left?-R-18-labelW:R+18,ly=-27;
+  E('rect',{x:lx,y:ly,width:labelW,height:labelH,rx:8,'class':'taskLabelPlate',stroke:c,'stroke-opacity':.35},lg);
+  var idText=E('text',{x:lx+10,y:ly+18,'class':'taskId',fill:c},lg);
+  idText.textContent=n.id;
+  var nameText=E('text',{x:lx+58,y:ly+18,'class':'taskName',fill:n.st==='pend'?'#aeb8d0':'#e0e6f5'},lg);
+  nameText.textContent=shortText(n.name,20);
+  var badgeW=72;
+  E('rect',{x:lx+9,y:ly+29,width:badgeW,height:18,rx:5,fill:n.st==='pend'?'rgba(24,29,51,.98)':c,
+    stroke:c,'stroke-width':1.1},lg);
+  var sw=E('text',{x:lx+9+badgeW/2,y:ly+42,'text-anchor':'middle','class':'statusWord',
+    fill:n.st==='done'?'#06271f':(n.st==='prog'?'#321d00':'#f5f7ff')},lg);
+  sw.textContent=STATUS_ICON[n.st]+' '+STATUS[n.st];
+  var meta=E('text',{x:lx+91,y:ly+42,'class':'taskMeta'},lg);
+  meta.textContent=n.files.length+' 文件 · '+n.depends.length+' 依赖';
+}
+
+if(layouts.length){
+  layouts.forEach(renderTask);
+}else{
+  var empty=E('g',{transform:'translate(800,520)'},$('nodesLow'));
+  E('circle',{r:58,fill:'url(#pendHalo)',opacity:.55,'class':'breathe'},empty);
+  E('circle',{r:27,fill:'rgba(10,12,28,.82)',stroke:'#66739a','stroke-width':1.5,'stroke-dasharray':'3 7'},empty);
+  var et=E('text',{x:0,y:5,'text-anchor':'middle','class':'plaq'},empty);
+  et.textContent='暂无任务';
+}
+
+/* ---------- dependency pulses ---------- */
+var bead=$('bead'),bead2=$('bead2');
+var pulsePaths=dependencyPaths.filter(function(item){return item.targetState==='prog'||item.targetState==='err';});
+if(!pulsePaths.length)pulsePaths=dependencyPaths;
+if(pulsePaths.length&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
+  pulsePaths=pulsePaths.filter(function(item){
+    try{item.length=item.path.getTotalLength();return item.length>0;}catch(error){return false;}
+  });
+  var pulseStart=performance.now(),PULSE_DUR=1700,PULSE_SLOT=2400;
+  function ease(p){return p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2;}
+  function frame(now){
+    Object.keys(flashTargets).forEach(function(key){flashTargets[key].setAttribute('opacity','0');});
+    if(!pulsePaths.length){
+      bead.setAttribute('opacity','0');bead2.setAttribute('opacity','0');return;
+    }
+    var elapsed=now-pulseStart,index=Math.floor(elapsed/PULSE_SLOT)%pulsePaths.length;
+    var local=elapsed%PULSE_SLOT,item=pulsePaths[index];
+    if(local<PULSE_DUR){
+      var p=ease(local/PULSE_DUR);
+      var pt=item.path.getPointAtLength(item.length*p);
+      var pt2=item.path.getPointAtLength(item.length*Math.max(0,p-.055));
+      bead.setAttribute('transform','translate('+pt.x.toFixed(1)+','+pt.y.toFixed(1)+')');
+      bead2.setAttribute('transform','translate('+pt2.x.toFixed(1)+','+pt2.y.toFixed(1)+')');
+      bead.setAttribute('opacity','1');bead2.setAttribute('opacity','.75');
+      if(p>.78&&flashTargets[item.targetKey]){
+        flashTargets[item.targetKey].setAttribute('opacity',(.9*(1-p)/.22).toFixed(2));
+      }
+    }else{
+      bead.setAttribute('opacity','0');bead2.setAttribute('opacity','0');
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+})();
+</script>
+<script>
+(function(){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const far=document.querySelector('.depth-far'),mid=document.querySelector('.depth-mid'),near=document.querySelector('.depth-near');
+  let mx=0,my=0,phase=0;
+  addEventListener('pointermove',e=>{
+    mx=e.clientX/innerWidth-.5;my=e.clientY/innerHeight-.5;
+  },{passive:true});
+  /* timer-driven camera drift remains visible in real browsers and deterministic captures */
+  setInterval(()=>{
+    phase+=.012;
+    const sway=Math.sin(phase),lift=Math.cos(phase*.73);
+    far.style.transform=`translate(${mx*-4+sway*8}px,${my*-3+lift*4}px)`;
+    mid.style.setProperty('--px',`${mx*-10+sway*34}px`);mid.style.setProperty('--py',`${my*-7+lift*14}px`);
+    near.style.transform=`translate(${mx*-25+sway*52}px,${my*-18+lift*24}px)`;
+  },33);
+})();
+</script>
+</body>
+</html>

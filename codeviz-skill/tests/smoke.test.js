@@ -8,13 +8,15 @@ const fs = require('fs');
 const path = require('path');
 const { parseTasksMd, getStats } = require('../src/parser');
 const { ProjectManager } = require('../src/project-manager');
-const { createProjectPayload } = require('../src/server');
+const { createProjectPayload, renderThemePage, THEMES } = require('../src/server');
 const { isCommitRelatedToTask, parseNameStatus } = require('../src/git-tracker');
 
 const root = path.resolve(__dirname, '..');
 const exampleRoot = path.join(root, 'examples');
 const templateIndex = path.join(root, 'templates', 'index.html');
 const templateClient = path.join(root, 'templates', 'client.js');
+const themeRuntime = path.join(root, 'templates', 'theme-runtime.js');
+const themesDir = path.join(root, 'templates', 'themes');
 
 function testExampleParsing() {
   const content = fs.readFileSync(path.join(exampleRoot, 'tasks.md'), 'utf-8');
@@ -68,8 +70,40 @@ function testTemplates() {
   assert(index.includes('id="canvas"'), 'index should include canvas');
   assert(index.includes('id="theme-toggle"'), 'index should include theme toggle');
   assert(index.includes('/client.js'), 'index should load client.js');
+  assert(index.includes('id="visual-select"'), 'index should expose the visual template selector');
   assert(client.includes('drawLines()'), 'client should draw SVG flow lines');
   assert(client.includes('applyTheme()'), 'client should support theme switching');
+  assert(client.includes('/theme/'), 'client should navigate to live visual themes');
+}
+
+function testLiveThemes() {
+  const runtime = fs.readFileSync(themeRuntime, 'utf-8');
+  assert(runtime.includes("new WebSocket"), 'theme runtime should connect to realtime updates');
+  assert(runtime.includes("fetch('/api/projects')"), 'theme runtime should support project switching');
+  assert(runtime.includes('__CODEVIZ_LIVE_READY__'), 'theme runtime should expose a browser acceptance signal');
+  assert(runtime.includes('fitThemeCanvas'), 'theme runtime should fit the 1600x900 artboard to the viewport');
+
+  for (const [themeKey, theme] of Object.entries(THEMES)) {
+    const filePath = path.join(themesDir, theme.file);
+    assert(fs.existsSync(filePath), `${themeKey} theme source should exist`);
+    const source = fs.readFileSync(filePath, 'utf-8');
+    assert(source.includes('__CODEVIZ_THEME_DATA__'),
+      `${themeKey} should consume injected project data`);
+    assert(source.includes('data-status'),
+      `${themeKey} should expose task status in the rendered DOM`);
+  }
+
+  const html = renderThemePage('formation', {
+    projectId: 'proj-test',
+    projectName: '</script><script>bad()</script>',
+    phases: [],
+    tasks: [],
+    stats: { total: 0, done: 0, inProgress: 0, pending: 0, error: 0 }
+  });
+  assert(html.includes('window.__CODEVIZ_THEME_DATA__='), 'server should inject theme payload');
+  assert(html.includes('/theme-runtime.js'), 'server should inject the shared live runtime');
+  assert(!html.includes('</script><script>bad()'), 'inline payload must escape script-breaking markup');
+  assert.strictEqual(renderThemePage('missing-theme', {}), null, 'unknown themes should not render');
 }
 
 // --- Regression tests for confirmed bugs (see review) ---
@@ -286,6 +320,7 @@ async function run() {
     testSpecKitListFormat,
     testProjectPayload,
     testTemplates,
+    testLiveThemes,
     testInlineFilesDependsNoCollision,
     testDuplicateTaskIdDedup,
     testNonPhaseHeadingIgnored,

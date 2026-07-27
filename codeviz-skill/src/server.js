@@ -12,6 +12,34 @@ const { inferProgress } = require('./inferencer');
 
 const PORT = 7878;
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
+const THEMES_DIR = path.join(TEMPLATES_DIR, 'themes');
+const THEMES = Object.freeze({
+  formation: { name: '周天星阵', file: 'formation.html' },
+  ascension: { name: '飞升天梯', file: 'ascension.html' },
+  constellation: { name: '星灵觉醒', file: 'constellation.html' },
+  starforge: { name: '星核锻造', file: 'starforge.html' }
+});
+
+function serializeForInlineScript(value) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+function renderThemePage(themeKey, payload) {
+  const theme = THEMES[themeKey];
+  if (!theme) return null;
+  const source = fs.readFileSync(path.join(THEMES_DIR, theme.file), 'utf-8');
+  const bootstrap = [
+    '<script>',
+    `window.__CODEVIZ_THEME_KEY__=${serializeForInlineScript(themeKey)};`,
+    `window.__CODEVIZ_THEME_DATA__=${serializeForInlineScript(payload)};`,
+    '</script>',
+    '<script defer src="/theme-runtime.js"></script>'
+  ].join('');
+  return source.replace('</head>', `${bootstrap}</head>`);
+}
 
 async function createProjectPayload(project, options = {}) {
   const { useGit = true, useFiles = true } = options;
@@ -40,6 +68,49 @@ function createServer(projectManager) {
 
     const parsedUrl = new URL(req.url, 'http://localhost');
     const pathname = parsedUrl.pathname;
+
+    // API: 可用的实时视觉主题
+    if (pathname === '/api/themes') {
+      const themes = Object.entries(THEMES).map(([id, theme]) => ({
+        id,
+        name: theme.name,
+        url: `/theme/${id}`
+      }));
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ themes }));
+      return;
+    }
+
+    // 实时主题页：服务端注入项目 payload，避免先显示硬编码演示数据。
+    const themeMatch = pathname.match(/^\/theme\/([a-z-]+)$/);
+    if (themeMatch) {
+      const themeKey = themeMatch[1];
+      if (!THEMES[themeKey]) {
+        res.statusCode = 404;
+        res.end('Theme not found');
+        return;
+      }
+      const requestedProjectId = parsedUrl.searchParams.get('project');
+      const project = (requestedProjectId && projectManager.getProject(requestedProjectId))
+        || projectManager.listProjects()[0];
+      if (!project) {
+        res.statusCode = 404;
+        res.end('Project not found');
+        return;
+      }
+      try {
+        const payload = await createProjectPayload(project);
+        const content = renderThemePage(themeKey, payload);
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.end(content);
+      } catch (e) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.end('tasks.md not found at ' + project.tasksPath);
+      }
+      return;
+    }
 
     // API: 兼容旧前端：获取默认项目的任务导图
     // 旧版本 client.js 会请求 /api/map；保留该端点可以避免浏览器缓存旧 JS 时页面空白。
@@ -316,4 +387,10 @@ function createServer(projectManager) {
   return { server, broadcast, clients };
 }
 
-module.exports = { createServer, createProjectPayload, PORT };
+module.exports = {
+  createServer,
+  createProjectPayload,
+  renderThemePage,
+  THEMES,
+  PORT
+};
