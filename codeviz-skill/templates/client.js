@@ -33,6 +33,7 @@ class CodeVizClient {
 
     this.dom = {
       projectSelect: document.getElementById('project-select'),
+      visualSelect: document.getElementById('visual-select'),
       stats: document.getElementById('stats'),
       ringFill: document.getElementById('ring-fill'),
       ringText: document.getElementById('ring-text'),
@@ -67,6 +68,17 @@ class CodeVizClient {
     if (this.dom.projectSelect) {
       this.dom.projectSelect.addEventListener('change', () => {
         this.loadProject(this.dom.projectSelect.value);
+      });
+    }
+
+    if (this.dom.visualSelect) {
+      this.dom.visualSelect.addEventListener('change', () => {
+        const theme = this.dom.visualSelect.value;
+        if (!theme || theme === 'map') return;
+        const project = this.currentProjectId
+          ? `?project=${encodeURIComponent(this.currentProjectId)}`
+          : '';
+        window.location.href = `/theme/${encodeURIComponent(theme)}${project}`;
       });
     }
 

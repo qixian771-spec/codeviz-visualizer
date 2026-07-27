@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node bin/codeviz.js",
     "demo": "node bin/codeviz.js examples --port 7879",
-    "check": "node --check bin/codeviz.js && node --check src/parser.js && node --check src/server.js && node --check src/inferencer.js && node --check src/git-tracker.js && node --check src/project-manager.js && node --check src/watcher.js && node --check templates/client.js",
+    "check": "node --check bin/codeviz.js && node --check src/parser.js && node --check src/server.js && node --check src/inferencer.js && node --check src/git-tracker.js && node --check src/project-manager.js && node --check src/watcher.js && node --check templates/client.js && node --check templates/theme-runtime.js",
     "test": "node tests/smoke.test.js && node tests/realtime.test.js"
   },
   "engines": {

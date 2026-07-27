@@ -209,9 +209,55 @@ async function testPortInUseFriendlyError() {
   fs.rmSync(busyDir, { recursive: true, force: true });
 }
 
+async function testLiveThemeEndpoint() {
+  const themeDir = path.join(__dirname, 'temp-live-theme');
+  fs.mkdirSync(themeDir, { recursive: true });
+  fs.writeFileSync(path.join(themeDir, 'tasks.md'), [
+    '# Tasks: Live Theme',
+    '## Phase 1: Real Data',
+    '- [x] T001 Render injected task',
+    '- [ ] T002 Receive websocket updates depends: T001'
+  ].join('\n'));
+
+  const manager = new ProjectManager();
+  const project = manager.addProject(themeDir);
+  const { server } = createServer(manager);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+
+  const get = (requestPath) => new Promise((resolve, reject) => {
+    http.get({ host: '127.0.0.1', port, path: requestPath }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => resolve({
+        status: response.statusCode,
+        body: Buffer.concat(chunks).toString('utf-8')
+      }));
+    }).on('error', reject);
+  });
+
+  const themes = await get('/api/themes');
+  assert.strictEqual(themes.status, 200);
+  assert.strictEqual(JSON.parse(themes.body).themes.length, 4, 'should publish four visual themes');
+
+  const page = await get(`/theme/formation?project=${encodeURIComponent(project.id)}`);
+  assert.strictEqual(page.status, 200);
+  assert(page.body.includes('Render injected task'), 'theme page should contain real tasks.md data');
+  assert(page.body.includes('window.__CODEVIZ_THEME_DATA__='), 'theme page should inject payload');
+  assert(page.body.includes('/theme-runtime.js'), 'theme page should load realtime runtime');
+
+  const missing = await get('/theme/not-a-theme');
+  assert.strictEqual(missing.status, 404, 'unknown theme should return 404');
+
+  await new Promise((resolve) => server.close(resolve));
+  fs.rmSync(themeDir, { recursive: true, force: true });
+  console.log('✓ Live theme HTTP injection verified');
+}
+
 testRealtimeBroadcast()
   .then(() => testWebSocketControlFrames())
   .then(() => testPortInUseFriendlyError())
+  .then(() => testLiveThemeEndpoint())
   .then(() => {
     console.log('CodeViz realtime refresh tests passed.');
   }).catch(err => {

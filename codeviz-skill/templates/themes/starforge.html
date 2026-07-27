@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>CodeViz · 星核锻造 Starforge</title>
+<style>
+:root{
+  --ink:#dfe7f6; --dim:#8fa0bf; --faint:#5d6c8c;
+  --green:#2ee6a8; --amber:#ffc65c; --red:#ff6b6b; --pend:#6b7d9e;
+  --line:rgba(130,152,200,.16);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1600px;height:900px;overflow:hidden;background:#04060b}
+body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;color:var(--ink)}
+#stage{position:relative;width:1600px;height:900px;isolation:isolate}
+#scene{position:absolute;inset:0;display:block;z-index:2}
+.depth-layer{position:absolute;inset:-55px;pointer-events:none;overflow:hidden;will-change:transform}
+.depth-far{z-index:0;background:
+  radial-gradient(ellipse at 34% 44%,rgba(20,121,129,.10),transparent 38%),
+  radial-gradient(ellipse at 72% 42%,rgba(98,71,155,.10),transparent 34%)}
+.depth-far i{position:absolute;width:520px;height:270px;border-radius:50%;filter:blur(55px);
+  background:radial-gradient(ellipse,rgba(94,104,137,.13),transparent 68%);
+  animation:forgeSmoke 32s ease-in-out infinite alternate}
+.depth-far i:nth-child(2){animation-delay:-14s;animation-direction:alternate-reverse}
+.depth-mid{z-index:1}
+.depth-mid::before{content:"";position:absolute;left:575px;top:235px;width:450px;height:520px;border-radius:48%;
+  background:radial-gradient(ellipse at 50% 62%,rgba(255,170,72,.18),rgba(255,112,28,.045) 42%,transparent 70%);
+  filter:blur(18px);animation:forgeAmbient 8.4s ease-in-out infinite}
+.depth-mid::after{content:"";position:absolute;left:675px;top:330px;width:250px;height:360px;
+  background:repeating-radial-gradient(ellipse at 50% 100%,transparent 0 16px,rgba(255,211,143,.055) 18px 20px,transparent 22px 38px);
+  filter:blur(2px);animation:heatRise 4.2s ease-in-out infinite}
+.depth-near{z-index:3}
+.depth-near b{position:absolute;width:4px;height:4px;border-radius:50%;background:#fff3c9;
+  box-shadow:0 0 12px 4px rgba(255,151,46,.45);animation:frontEmber 6s ease-out infinite;opacity:0}
+@keyframes forgeSmoke{from{transform:translate(-70px,25px) scale(.9)}to{transform:translate(100px,-45px) scale(1.15)}}
+@keyframes forgeAmbient{0%,28%,100%{opacity:.3;transform:scale(.9)}48%{opacity:.62;transform:scale(1.03)}
+  53%{opacity:1;transform:scale(1.16)}68%{opacity:.4;transform:scale(1.28)}}
+@keyframes heatRise{0%,100%{transform:translateY(20px) scaleX(.92);opacity:.18}50%{transform:translateY(-22px) scaleX(1.08);opacity:.48}}
+@keyframes frontEmber{0%{transform:translate(0,100px) scale(.5);opacity:0}16%{opacity:.75}
+  100%{transform:translate(var(--ex,80px),-540px) scale(2.3);opacity:0}}
+/* ---------- svg animation utilities ---------- */
+.tb{transform-box:fill-box;transform-origin:50% 50%}
+@keyframes rot{to{transform:rotate(360deg)}}
+.rotA{animation:rot var(--rd,60s) linear infinite}
+.rev{animation-direction:reverse}
+@keyframes flow{to{stroke-dashoffset:var(--dd,-160)}}
+.flow{animation:flow var(--fd,6s) linear infinite}
+@keyframes breathe{0%,100%{opacity:var(--o1,.5);transform:scale(1)}50%{opacity:var(--o2,.9);transform:scale(1.05)}}
+.breathe{animation:breathe var(--bd,3.6s) ease-in-out infinite}
+@keyframes bobk{0%,100%{transform:translateY(0)}50%{transform:translateY(var(--bb,-3.5px))}}
+.bob{animation:bobk var(--bt,6s) ease-in-out infinite}
+@keyframes twk{0%,100%{opacity:.2}50%{opacity:.85}}
+.twinkA{animation:twk 4.6s ease-in-out infinite}
+.twinkB{animation:twk 4.6s ease-in-out -1.5s infinite}
+.twinkC{animation:twk 4.6s ease-in-out -3s infinite}
+@keyframes nebd{0%,100%{transform:translate(0,0)}50%{transform:translate(26px,-15px)}}
+.neb{animation:nebd var(--nd,80s) ease-in-out infinite}
+/* forge core */
+@keyframes corebreath{0%,100%{opacity:.85;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+.corebreath{animation:corebreath 3.4s ease-in-out infinite}
+@keyframes poolpulse{0%,100%{opacity:.88}50%{opacity:1}}
+.poolpulse{animation:poolpulse 3.2s ease-in-out infinite}
+@keyframes colflick{0%,100%{opacity:.32}18%{opacity:.44}37%{opacity:.28}55%{opacity:.46}76%{opacity:.36}}
+.colflick{animation:colflick 2.8s linear infinite}
+@keyframes crackfk{0%,100%{opacity:.55}45%{opacity:.95}60%{opacity:.7}}
+.crackfk{animation:crackfk 2.2s linear infinite}
+@keyframes menisk{0%,100%{opacity:.55}50%{opacity:1}}
+.menisk{animation:menisk 2.6s ease-in-out infinite}
+/* grand forge event · 8.4s: gather → lift → strike → flare → settle */
+@keyframes bigswing{
+  0%,28%{transform:translateY(8px)}
+  38%{transform:translateY(-34px)}
+  46%{transform:translateY(-34px)}
+  51%{transform:translateY(-8px)}
+  53%{transform:translateY(34px)}
+  56%{transform:translateY(34px)}
+  64%{transform:translateY(5px)}
+  100%{transform:translateY(8px)}
+}
+.bigswing{animation:bigswing 8.4s cubic-bezier(.42,0,.2,1) infinite}
+@keyframes bigspark{0%,51.5%{opacity:0;transform:scale(.35) rotate(0)}53%{opacity:1;transform:scale(1) rotate(8deg)}57%{opacity:.75;transform:scale(1.65) rotate(22deg)}64%,100%{opacity:0;transform:scale(2.1) rotate(30deg)}}
+.bigspark{animation:bigspark 8.4s cubic-bezier(.15,.65,.25,1) infinite}
+@keyframes bigface{0%,48%{opacity:.24}51%{opacity:.6}53%{opacity:1}61%{opacity:.3}100%{opacity:.24}}
+.bigface{animation:bigface 8.4s linear infinite}
+@keyframes shock{0%,52%{opacity:0;transform:scale(.72)}53.5%{opacity:.9;transform:scale(.92)}65%{opacity:.2;transform:scale(1.65)}72%,100%{opacity:0;transform:scale(1.9)}}
+.shock{animation:shock 8.4s cubic-bezier(.12,.58,.22,1) infinite}
+@keyframes coreflash{0%,48%{opacity:0;transform:scale(.75)}53%{opacity:.82;transform:scale(1.08)}59%{opacity:.35;transform:scale(1.22)}70%,100%{opacity:0;transform:scale(1.42)}}
+.coreflash{animation:coreflash 8.4s cubic-bezier(.12,.65,.2,1) infinite;transform-box:fill-box;transform-origin:center}
+@keyframes forgeCharge{0%,24%{opacity:0;transform:scale(.55)}36%{opacity:.35;transform:scale(.85)}48%{opacity:.82;transform:scale(1.04)}53%{opacity:1;transform:scale(1.12)}61%{opacity:.2;transform:scale(1.35)}72%,100%{opacity:0;transform:scale(1.5)}}
+.forgeCharge{animation:forgeCharge 8.4s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes impactRay{0%,52%{opacity:0;transform:scale(.25) rotate(-8deg)}53.5%{opacity:1;transform:scale(1) rotate(0)}61%{opacity:.15;transform:scale(1.5) rotate(7deg)}68%,100%{opacity:0;transform:scale(1.8) rotate(10deg)}}
+.impactRay{animation:impactRay 8.4s cubic-bezier(.1,.65,.2,1) infinite;transform-box:fill-box;transform-origin:center}
+@keyframes forgeShake{0%,52%,58%,100%{transform:translate(0,0)}53%{transform:translate(-2px,1px)}54%{transform:translate(2px,-1px)}55%{transform:translate(-1px,-1px)}56%{transform:translate(1px,1px)}}
+#scene{animation:forgeShake 8.4s linear infinite}
+/* mini hammer tap · 2.4s */
+@keyframes tapspark{0%,45%{opacity:0;transform:scale(.4)}49%{opacity:1;transform:scale(1)}56%{opacity:.55;transform:scale(1.3)}62%{opacity:0}100%{opacity:0}}
+.tapspark{animation:tapspark 2.4s linear infinite}
+@keyframes tapface{0%,45%{opacity:.12}50%{opacity:.9}60%{opacity:.12}100%{opacity:.12}}
+.tapface{animation:tapface 2.4s linear infinite}
+@keyframes coreglowP{0%,44%{opacity:.72}49%{opacity:1}58%{opacity:.72}100%{opacity:.72}}
+.coreglowP{animation:coreglowP 2.4s linear infinite}
+@keyframes pendb{0%,100%{opacity:.5}50%{opacity:.66}}
+.pendb{animation:pendb 7s ease-in-out infinite}
+/* ember */
+@keyframes emberk{0%{transform:translate(0,0);opacity:0}10%{opacity:var(--eo,.6)}80%{opacity:calc(var(--eo,.6)*.55)}100%{transform:translate(var(--ex,0),var(--ey,-200px));opacity:0}}
+.ember{animation:emberk var(--ed,6s) linear infinite}
+/* commit-pulse hit flash */
+@keyframes hitr{0%{opacity:.95;transform:scale(.55)}100%{opacity:0;transform:scale(2.1)}}
+.hitRing{opacity:0}
+.node.hit .hitRing{animation:hitr .68s ease-out}
+@keyframes hitb{0%{filter:brightness(2.1)}100%{filter:brightness(1)}}
+.node.hit .anvilBody{animation:hitb .68s ease-out}
+/* legend + misc */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.blinkDot{animation:blink 1.8s ease-in-out infinite}
+@keyframes errfk{0%,100%{opacity:.95}42%{opacity:.5}48%{opacity:1}55%{opacity:.45}70%{opacity:.9}}
+.errfk{animation:errfk 2.6s linear infinite}
+@keyframes legp{0%,100%{opacity:.45}50%{opacity:1}}
+.legp{animation:legp 1.6s ease-in-out infinite}
+/* ---------- HTML overlays ---------- */
+#topbar{position:absolute;left:0;top:0;width:1600px;height:58px;display:flex;align-items:center;
+  padding:0 26px;gap:14px;z-index:6;
+  background:linear-gradient(180deg,rgba(7,10,18,.92),rgba(7,10,18,.62) 78%,rgba(7,10,18,0));
+  border-bottom:1px solid rgba(130,152,200,.13)}
+.logoWrap{display:flex;align-items:center;gap:10px}
+.wordmark{font-size:17px;font-weight:700;letter-spacing:.5px;color:#eef3ff}
+.wordmark b{color:var(--amber);font-weight:700}
+.tagPill{font-size:12px;color:#ffd98c;border:1px solid rgba(255,198,92,.38);background:rgba(255,158,60,.08);
+  border-radius:999px;padding:3px 12px;letter-spacing:1px}
+.tagPill i{font-style:normal;color:#c9a25c;margin-left:6px;letter-spacing:1.5px;font-size:10.5px}
+.projectPill{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:11px;color:#9fb0cd;letter-spacing:.4px}
+#topbar .spacer{flex:1}
+.chip{display:flex;align-items:center;gap:7px;font-size:12px;color:#c6d1e8;
+  background:rgba(17,23,39,.72);border:1px solid rgba(130,152,200,.17);border-radius:999px;padding:4.5px 12px}
+.chip b{font-size:13px;font-weight:700;color:#eef3ff}
+.chip .dot{width:7px;height:7px;border-radius:50%}
+.sep{width:1px;height:22px;background:rgba(130,152,200,.2);margin:0 2px}
+.ringWrap{display:flex;align-items:center;gap:8px}
+.ringLbl{display:flex;flex-direction:column;line-height:1.15}
+.ringLbl .t{font-size:10px;color:var(--dim);letter-spacing:2px}
+.ringLbl .v{font-size:15px;font-weight:700;color:#ffd98c}
+.liveB{display:flex;align-items:center;gap:7px;font-size:12px;color:#9fe8cf;
+  border:1px solid rgba(46,230,168,.3);background:rgba(46,230,168,.07);border-radius:999px;padding:4.5px 12px}
+.liveB .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px rgba(46,230,168,.9)}
+/* phase plaques */
+#phaseDeck{position:absolute;left:26px;right:26px;top:72px;z-index:5;display:grid;
+  grid-template-columns:repeat(var(--phase-cols,6),minmax(0,1fr));gap:8px;align-items:stretch}
+.plaque{position:relative;min-width:0;padding:9px 11px 10px;border-radius:11px;
+  background:linear-gradient(160deg,rgba(15,20,35,.88),rgba(9,13,24,.8));
+  border:1px solid rgba(130,152,200,.2);box-shadow:0 6px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(180,200,255,.07)}
+.plaque::before{content:"";position:absolute;left:-1px;top:12px;bottom:12px;width:3px;border-radius:3px;
+  background:linear-gradient(180deg,#ffd98c,#8fa5d4)}
+.pTag{font-size:9px;letter-spacing:2px;color:var(--faint);margin-bottom:2px;white-space:nowrap}
+.pTitle{font-size:13px;font-weight:700;color:#e8eefc;letter-spacing:.2px;margin-bottom:6px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pBarRow{display:flex;align-items:center;gap:9px}
+.pBar{flex:1;height:5px;border-radius:99px;background:#1b2336;display:flex;overflow:hidden}
+.pBar i{height:100%}
+.pNum{font-size:11px;font-weight:700;color:#ffd98c;white-space:nowrap}
+.pSub{margin-top:5px;font-size:9.5px;color:var(--dim);letter-spacing:.15px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* legend */
+#legend{position:absolute;left:26px;bottom:22px;z-index:5;padding:12px 15px 11px;border-radius:12px;
+  background:rgba(9,13,24,.8);border:1px solid rgba(130,152,200,.18);box-shadow:0 6px 30px rgba(0,0,0,.4)}
+#legend .lt{font-size:10.5px;letter-spacing:3.5px;color:var(--faint);margin-bottom:8px}
+.lrow{display:flex;align-items:center;gap:9px;font-size:12.5px;color:#c3cee6;margin-top:5px}
+.lrow svg{flex:none}
+.lfoot{margin-top:9px;padding-top:8px;border-top:1px solid rgba(130,152,200,.14);
+  font-size:11px;color:var(--faint);letter-spacing:.4px}
+/* caption */
+#caption{position:absolute;right:28px;bottom:26px;z-index:5;font-size:12.5px;color:#7e8dae;letter-spacing:.4px;text-align:right}
+#caption b{color:#c9a25c;font-weight:600}
+/* vignette */
+#vig{position:absolute;inset:0;z-index:4;pointer-events:none;
+  background:radial-gradient(115% 100% at 50% 44%,rgba(0,0,0,0) 52%,rgba(2,4,9,.6) 100%),
+             linear-gradient(180deg,rgba(3,5,10,.42),transparent 12%,transparent 88%,rgba(2,4,9,.5))}
+/* svg text */
+text{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+.lid{font-size:13px;font-weight:640;letter-spacing:.4px;paint-order:stroke;stroke:rgba(4,7,13,.88);stroke-width:3px;stroke-linejoin:round}
+.lname{font-size:12px;fill:#b9c5de;opacity:.94;paint-order:stroke;stroke:rgba(4,7,13,.88);stroke-width:3px;stroke-linejoin:round}
+.statusWord{font-size:10.5px;font-weight:750;letter-spacing:.8px}
+.statusPill{stroke-width:1.2}
+.gaugeT{font-size:11.5px;fill:#ffd98c;opacity:.92;letter-spacing:1px;paint-order:stroke;stroke:rgba(4,7,13,.8);stroke-width:3px}
+.ringTxt{font-size:13px;fill:#8fa5d4;letter-spacing:9px;opacity:.2}
+.hamRune{font-size:12px;fill:#ffe3a8;opacity:.85}
+body .cv-live-controls{top:auto!important;bottom:18px!important}
+@media(max-width:1200px){
+  .projectPill{display:none}
+  .chip{padding-inline:8px}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="depth-layer depth-far" aria-hidden="true">
+    <i style="left:8%;top:22%"></i><i style="right:4%;top:31%"></i>
+  </div>
+  <div class="depth-layer depth-mid" aria-hidden="true"></div>
+  <div class="depth-layer depth-near" aria-hidden="true">
+    <b style="left:42%;top:78%;--ex:-120px;animation-delay:-1s"></b>
+    <b style="left:48%;top:82%;--ex:75px;animation-delay:-4s"></b>
+    <b style="left:53%;top:76%;--ex:155px;animation-delay:-2.5s"></b>
+    <b style="left:58%;top:84%;--ex:-60px;animation-delay:-5s"></b>
+  </div>
+  <svg id="scene" viewBox="0 0 1600 900"></svg>
+
+  <div id="topbar">
+    <div class="logoWrap">
+      <svg width="24" height="24" viewBox="-13 -12 26 26">
+        <path d="M-9,-2.7 L-5.6,-5.6 L5.6,-5.6 L9,-2.7 L4.9,1.1 L0,9.2 L-4.9,1.1 Z" fill="#3d2c10" stroke="#ffc65c" stroke-width="1.2"/>
+        <circle r="2.6" fill="#ffe3a8"/>
+        <path d="M0,-11 L1.6,-7.6 L0,-6.4 L-1.6,-7.6 Z" fill="#ffe3a8"/>
+      </svg>
+      <span class="wordmark">Code<b>Viz</b></span>
+      <span class="tagPill">星核锻造<i>STARFORGE</i></span>
+      <span class="projectPill" id="projectName">静态锻造演示</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="chip"><span class="dot" style="background:#2ee6a8;box-shadow:0 0 7px rgba(46,230,168,.8)"></span>完成 <b id="statDone">3</b></div>
+    <div class="chip"><span class="dot" style="background:#ffc65c;box-shadow:0 0 7px rgba(255,198,92,.8)"></span>进行中 <b id="statProgress">5</b></div>
+    <div class="chip"><span class="dot" style="background:#ff6b6b;box-shadow:0 0 7px rgba(255,107,107,.6)"></span>报错 <b id="statError">0</b></div>
+    <div class="chip"><span class="dot" style="background:#6b7d9e"></span>未开始 <b id="statPending">2</b></div>
+    <div class="sep"></div>
+    <div class="ringWrap">
+      <svg width="34" height="34" viewBox="0 0 36 36">
+        <defs><linearGradient id="tgRing" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffe3a8"/><stop offset="1" stop-color="#ff9d3c"/></linearGradient></defs>
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke="#232f4c" stroke-width="3.2"/>
+        <circle id="topProgressArc" cx="18" cy="18" r="15.5" fill="none" stroke="url(#tgRing)" stroke-width="3.2"
+          stroke-dasharray="29.2 68.2" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        <text id="topProgressText" x="18" y="21.6" text-anchor="middle" style="font-size:9.5px;font-weight:700" fill="#ffd98c">30%</text>
+      </svg>
+      <div class="ringLbl"><span class="t">总进度</span><span class="v" id="topProgressValue">30%</span></div>
+    </div>
+    <div class="sep"></div>
+    <div class="liveB"><span class="dot blinkDot"></span>实时 · git 事件流</div>
+  </div>
+
+  <div id="phaseDeck" aria-label="项目阶段"></div>
+
+  <div id="legend">
+    <div class="lt">状态图例</div>
+    <div class="lrow">
+      <svg width="22" height="22" viewBox="-13 -11 26 26">
+        <path d="M-9,-2.7 L-5.6,-5.6 L5.6,-5.6 L9,-2.7 L4.9,1.1 L0,9.2 L-4.9,1.1 Z" fill="#16412f" stroke="#2ee6a8" stroke-width="1"/>
+        <circle r="2.6" fill="#2ee6a8"/></svg>
+      <span>充能完成 · 稳定辉光</span>
+    </div>
+    <div class="lrow">
+      <svg width="22" height="22" viewBox="-13 -11 26 26">
+        <path d="M-9,-2.7 L-5.6,-5.6 L5.6,-5.6 L9,-2.7 L4.9,1.1 L0,9.2 L-4.9,1.1 Z" fill="#4a3312" stroke="#ffc65c" stroke-width="1"/>
+        <circle r="2.6" fill="#ffd98c" class="legp"/></svg>
+      <span>正在锤炼 · 充能中</span>
+    </div>
+    <div class="lrow">
+      <svg width="22" height="22" viewBox="-13 -11 26 26">
+        <path d="M-9,-2.7 L-5.6,-5.6 L5.6,-5.6 L9,-2.7 L4.9,1.1 L0,9.2 L-4.9,1.1 Z" fill="#1a2333" stroke="#6b7d9e" stroke-width="1" stroke-dasharray="2.5 2.5"/>
+        <circle r="2.2" fill="#6b7d9e" opacity=".55"/></svg>
+      <span>休眠 · 未开始</span>
+    </div>
+    <div class="lrow">
+      <svg width="22" height="22" viewBox="-13 -11 26 26" class="errfk">
+        <path d="M-9,-2.7 L-5.6,-5.6 L5.6,-5.6 L9,-2.7 L4.9,1.1 L0,9.2 L-4.9,1.1 Z" fill="#3f1418" stroke="#ff6b6b" stroke-width="1"/>
+        <path d="M-2,-4.5 L1,-1 L-2,2 L2,6.5" fill="none" stroke="#ffb3b3" stroke-width="1"/></svg>
+      <span>异化警示 · 报错</span>
+    </div>
+    <div class="lfoot">晶砧体量 ∝ load　·　光流方向 = 执行顺序</div>
+  </div>
+
+  <div id="caption">供能链自外而内汇入炉心 · <b>光流方向 = 执行顺序</b> · 炉心成形 = 总进度 · commit 化作脉冲实时注入</div>
+  <div id="vig"></div>
+</div>
+
+<script>
+'use strict';
+/* ================= deterministic prng ================= */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rnd=mulberry32(20260726);
+const CX=800,CY=468;
+function pt(aDeg,r){const a=aDeg*Math.PI/180;return [CX+r*Math.cos(a),CY-r*Math.sin(a)]}
+function f1(n){return Math.round(n*10)/10}
+
+/* ================= payload + file:// fallback ================= */
+const FALLBACK_DATA={
+  projectId:'starforge-demo',
+  projectName:'静态锻造演示',
+  phases:[
+    {id:'phase-closeout',name:'Phase 15 · 阶段收敛',tasks:['T001','T002','T003','T004','T005','T006','T007']},
+    {id:'phase-codeviz',name:'CodeViz · 验收',tasks:['T101','T102','T103']}],
+  tasks:[
+    {id:'T001',name:'梳理 Phase 15 closeout',status:'done',phase:'phase-closeout',depends:[],files:['plan.md']},
+    {id:'T002',name:'收敛 script rewrite',status:'in-progress',phase:'phase-closeout',depends:['T001'],files:['rewrite.js']},
+    {id:'T003',name:'补齐 pipeline fixtures',status:'in-progress',phase:'phase-closeout',depends:['T002'],files:['a.json','b.json']},
+    {id:'T004',name:'验证 script rewrite',status:'in-progress',phase:'phase-closeout',depends:['T003'],files:['rewrite.test.js']},
+    {id:'T005',name:'验证 orchestrator',status:'pending',phase:'phase-closeout',depends:['T004'],files:['orchestrator.test.js']},
+    {id:'T006',name:'验证 publish dry-run',status:'in-progress',phase:'phase-closeout',depends:['T005'],files:['publish.test.js']},
+    {id:'T007',name:'收敛 Remotion Bili',status:'in-progress',phase:'phase-closeout',depends:['T006'],files:['a.ts','b.ts','c.ts','d.ts','e.ts']},
+    {id:'T101',name:'补齐 CodeViz skill',status:'done',phase:'phase-codeviz',depends:[],files:['SKILL.md']},
+    {id:'T102',name:'补齐 CodeViz 浏览器',status:'done',phase:'phase-codeviz',depends:['T101'],files:['client.js','index.html']},
+    {id:'T103',name:'启动 CodeViz 服务',status:'pending',phase:'phase-codeviz',depends:['T102'],files:['server.js']}],
+  stats:{total:10,done:3,pending:2,inProgress:5,error:0}};
+
+function esc(value){
+  return String(value==null?'':value).replace(/[&<>"']/g,ch=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function list(value){
+  if(Array.isArray(value))return value.filter(v=>v!=null&&v!=='').map(v=>String(v));
+  if(value==null||value==='')return[];
+  return String(value).split(/[,\s，]+/).filter(Boolean);
+}
+function finite(value,fallback){
+  const n=Number(value);return Number.isFinite(n)&&n>=0?n:fallback;
+}
+function normalizeStatus(value){
+  const s=String(value||'pending').toLowerCase().replace(/_/g,'-');
+  if(s==='done'||s==='completed'||s==='complete')return'done';
+  if(s==='in-progress'||s==='inprogress'||s==='progress'||s==='active')return'in-progress';
+  if(s==='error'||s==='failed'||s==='failure')return'error';
+  return'pending';
+}
+function normalizePayload(input){
+  const rawPhases=Array.isArray(input.phases)?input.phases:[];
+  const phases=rawPhases.map((phase,index)=>({
+    uid:`p${index}`,
+    id:String(phase&&phase.id!=null?phase.id:`phase-${index+1}`),
+    name:String(phase&&phase.name!=null?phase.name:`阶段 ${index+1}`),
+    refs:Array.isArray(phase&&phase.tasks)?phase.tasks:[],
+    tasks:[]}));
+  const phaseLookup=new Map();
+  phases.forEach(phase=>{
+    if(!phaseLookup.has(phase.id))phaseLookup.set(phase.id,phase);
+    if(!phaseLookup.has(phase.name))phaseLookup.set(phase.name,phase);
+  });
+  const membership=new Map();
+  phases.forEach(phase=>phase.refs.forEach(ref=>{
+    const id=ref&&typeof ref==='object'?ref.id:ref;
+    if(id!=null&&!membership.has(String(id)))membership.set(String(id),phase);
+  }));
+  function ensurePhase(ref){
+    const key=ref==null?'':String(ref);
+    if(key&&phaseLookup.has(key))return phaseLookup.get(key);
+    if(!key&&phases.length===1)return phases[0];
+    const id=key||'phase-unassigned';
+    const phase={uid:`p${phases.length}`,id,name:key||'未分配阶段',refs:[],tasks:[]};
+    phases.push(phase);phaseLookup.set(id,phase);phaseLookup.set(phase.name,phase);
+    return phase;
+  }
+  const rawTasks=Array.isArray(input.tasks)?input.tasks:[];
+  const tasks=rawTasks.map((task,index)=>{
+    const source=task&&typeof task==='object'?task:{name:task};
+    const id=String(source.id!=null?source.id:`T${String(index+1).padStart(3,'0')}`);
+    const phase=ensurePhase(source.phase!=null?source.phase:(membership.get(id)||{}).id);
+    const files=list(source.files);
+    const load=Math.max(1,Math.min(5,Math.round(finite(source.load,files.length||1))));
+    const normalized={
+      uid:`n${index}`,id,name:String(source.name!=null?source.name:id),
+      st:normalizeStatus(source.status),phaseId:phase.id,phaseIndex:phases.indexOf(phase),
+      depends:[...new Set(list(source.depends))],files,load,sourceIndex:index};
+    phase.tasks.push(normalized);
+    return normalized;
+  });
+  const computed={total:tasks.length,done:0,pending:0,inProgress:0,error:0};
+  tasks.forEach(task=>{
+    if(task.st==='done')computed.done++;
+    else if(task.st==='in-progress')computed.inProgress++;
+    else if(task.st==='error')computed.error++;
+    else computed.pending++;
+  });
+  const supplied=input.stats&&typeof input.stats==='object'?input.stats:{};
+  const stats={
+    total:finite(supplied.total,computed.total),
+    done:finite(supplied.done,computed.done),
+    pending:finite(supplied.pending,computed.pending),
+    inProgress:finite(supplied.inProgress,computed.inProgress),
+    error:finite(supplied.error,computed.error)};
+  phases.forEach((phase,index)=>{
+    phase.index=index;
+    phase.stats={total:phase.tasks.length,done:0,pending:0,inProgress:0,error:0};
+    phase.tasks.forEach(task=>{
+      task.phaseIndex=index;
+      if(task.st==='done')phase.stats.done++;
+      else if(task.st==='in-progress')phase.stats.inProgress++;
+      else if(task.st==='error')phase.stats.error++;
+      else phase.stats.pending++;
+    });
+  });
+  return{
+    projectId:String(input.projectId!=null?input.projectId:'starforge-project'),
+    projectName:String(input.projectName!=null?input.projectName:'CodeViz 项目'),
+    phases,tasks,stats};
+}
+
+const PROVIDED=window.__CODEVIZ_THEME_DATA__;
+const HAS_PAYLOAD=!!(PROVIDED&&typeof PROVIDED==='object'&&Array.isArray(PROVIDED.tasks));
+const DATA=normalizePayload(HAS_PAYLOAD?PROVIDED:FALLBACK_DATA);
+const TOTAL_PROGRESS=DATA.stats.total?Math.max(0,Math.min(100,Math.round(DATA.stats.done/DATA.stats.total*100))):0;
+
+document.documentElement.dataset.starforgeSource=HAS_PAYLOAD?'payload':'fallback';
+document.title=`CodeViz · ${DATA.projectName} · 星核锻造`;
+document.getElementById('projectName').textContent=DATA.projectName;
+document.getElementById('projectName').title=DATA.projectName;
+document.getElementById('statDone').textContent=DATA.stats.done;
+document.getElementById('statProgress').textContent=DATA.stats.inProgress;
+document.getElementById('statError').textContent=DATA.stats.error;
+document.getElementById('statPending').textContent=DATA.stats.pending;
+document.getElementById('topProgressText').textContent=`${TOTAL_PROGRESS}%`;
+document.getElementById('topProgressValue').textContent=`${TOTAL_PROGRESS}%`;
+const topCirc=2*Math.PI*15.5;
+document.getElementById('topProgressArc').setAttribute('stroke-dasharray',`${f1(topCirc*TOTAL_PROGRESS/100)} ${f1(topCirc)}`);
+
+const phaseDeck=document.getElementById('phaseDeck');
+phaseDeck.style.setProperty('--phase-cols',Math.max(1,DATA.phases.length));
+phaseDeck.dataset.phaseCount=String(DATA.phases.length);
+phaseDeck.innerHTML=DATA.phases.map((phase,index)=>{
+  const s=phase.stats,total=Math.max(1,s.total);
+  return`<section class="plaque" data-phase-id="${esc(phase.id)}" title="${esc(phase.name)}">
+    <div class="pTag">供能阵列 · ${String(index+1).padStart(2,'0')}</div>
+    <div class="pTitle">${esc(phase.name)}</div>
+    <div class="pBarRow"><div class="pBar">
+      <i style="width:${f1(s.done/total*100)}%;background:#2ee6a8"></i>
+      <i style="width:${f1(s.inProgress/total*100)}%;background:#ffc65c"></i>
+      <i style="width:${f1(s.error/total*100)}%;background:#ff6b6b"></i>
+      <i style="width:${f1(s.pending/total*100)}%;background:#3a4560"></i>
+    </div><span class="pNum">${s.done}/${s.total}</span></div>
+    <div class="pSub">完成 ${s.done} · 加工 ${s.inProgress} · 待办 ${s.pending} · 报错 ${s.error}</div>
+  </section>`;
+}).join('');
+document.getElementById('caption').innerHTML=`${esc(DATA.projectName)} · 供能链自外而内汇入炉心 · <b>依赖光流 = depends 执行顺序</b> · 炉心成形 = ${TOTAL_PROGRESS}%`;
+
+const ST={
+  done:          {main:'#2ee6a8',bright:'#8bf5d2',bodyA:'#27735a',bodyB:'#0a1f17',core:'#c8ffe9',label:'#7df0c8',word:'已完成'},
+  'in-progress': {main:'#ffc65c',bright:'#ffe3a8',bodyA:'#7a5520',bodyB:'#221105',core:'#fff1cf',label:'#ffd98c',word:'加工中'},
+  pending:       {main:'#6b7d9e',bright:'#93a6c8',bodyA:'#2a3550',bodyB:'#0e1422',core:'#8ea2c6',label:'#94a4c4',word:'未开始'},
+  error:         {main:'#ff6b6b',bright:'#ffb3b3',bodyA:'#4a1a1e',bodyB:'#180608',core:'#ffd4d4',label:'#ff9a9a',word:'报错'}};
+
+/* All payload tasks are placed once, grouped by payload phase around the forge. */
+const orderedTasks=[];
+DATA.phases.forEach(phase=>phase.tasks.forEach(task=>orderedTasks.push(task)));
+const placed=new Set(orderedTasks.map(task=>task.uid));
+DATA.tasks.forEach(task=>{if(!placed.has(task.uid))orderedTasks.push(task)});
+const nodeCount=orderedTasks.length;
+const ringCount=nodeCount>18?Math.min(3,Math.ceil(nodeCount/18)):1;
+const nodes=orderedTasks.map((task,index)=>{
+  const a=145-index*360/Math.max(1,nodeCount);
+  const band=ringCount===1?0:index%ringCount;
+  const rx=ringCount===1?600:610-band*105;
+  const ry=ringCount===1?280:285-band*48;
+  const rad=a*Math.PI/180;
+  return{...task,a,r:(rx+ry)/2,x:CX+rx*Math.cos(rad),y:CY-ry*Math.sin(rad),idx:index,
+    side:Math.cos(rad)<0?'L':'R'};
+});
+const byId=new Map();
+nodes.forEach(node=>{if(!byId.has(node.id))byId.set(node.id,node)});
+const NR=node=>17+3*node.load;
+
+/* Every dependency rail comes directly from task.depends; no synthetic sequence. */
+const segs=[];
+const edgeKeys=new Set();
+function mkSeg(source,target){
+  const key=`${source.uid}>${target.uid}`;
+  if(edgeKeys.has(key)||source===target)return;
+  edgeKeys.add(key);
+  const mx=(source.x+target.x)/2,my=(source.y+target.y)/2;
+  let ox=mx-CX,oy=my-CY,om=Math.hypot(ox,oy);
+  if(om<1){ox=-(target.y-source.y);oy=target.x-source.x;om=Math.hypot(ox,oy)||1}
+  const bend=Math.min(92,Math.max(24,Math.hypot(target.x-source.x,target.y-source.y)*.16));
+  const c=[mx+ox/om*bend,my+oy/om*bend];
+  segs.push({s:source,d:target,c,hard:true});
+}
+nodes.forEach(target=>target.depends.forEach(dependencyId=>{
+  const source=byId.get(String(dependencyId));
+  if(source)mkSeg(source,target);
+}));
+/* quad helpers */
+function qP(g,t){const u=1-t;return[u*u*g.s.x+2*u*t*g.c[0]+t*t*g.d.x, u*u*g.s.y+2*u*t*g.c[1]+t*t*g.d.y]}
+function qT(g,t){const u=1-t;return[2*u*(g.c[0]-g.s.x)+2*t*(g.d.x-g.c[0]), 2*u*(g.c[1]-g.s.y)+2*t*(g.d.y-g.c[1])]}
+function qLen(g){let L=0,p=qP(g,0);for(let k=1;k<=24;k++){const q=qP(g,k/24);L+=Math.hypot(q[0]-p[0],q[1]-p[1]);p=q}return L}
+segs.forEach(g=>g.len=qLen(g));
+
+/* ================= build svg ================= */
+let DEFS='',BG='',RAIL='',FORGE='',NODE='',FX='';
+
+/* ---- defs: shared gradients ---- */
+DEFS+=`
+<radialGradient id="bgR" cx="50%" cy="52%" r="75%">
+  <stop offset="0" stop-color="#191624"/><stop offset="38%" stop-color="#0d1220"/>
+  <stop offset="75%" stop-color="#060a14"/><stop offset="100%" stop-color="#03050a"/></radialGradient>
+<radialGradient id="warmG"><stop offset="0" stop-color="#ff9d3c" stop-opacity=".16"/>
+  <stop offset="55%" stop-color="#c85a1e" stop-opacity=".07"/><stop offset="100%" stop-color="#c85a1e" stop-opacity="0"/></radialGradient>
+<radialGradient id="nebT"><stop offset="0" stop-color="#155060" stop-opacity=".55"/><stop offset="100%" stop-color="#155060" stop-opacity="0"/></radialGradient>
+<radialGradient id="nebI"><stop offset="0" stop-color="#232a58" stop-opacity=".5"/><stop offset="100%" stop-color="#232a58" stop-opacity="0"/></radialGradient>
+<radialGradient id="poolR" cx="50%" cy="42%">
+  <stop offset="0" stop-color="#fff6dd"/><stop offset="26%" stop-color="#ffcf7e"/>
+  <stop offset="52%" stop-color="#ff8f3a"/><stop offset="78%" stop-color="#a83812"/><stop offset="100%" stop-color="#4a1206"/></radialGradient>
+<linearGradient id="colG" x1="0" y1="1" x2="0" y2="0">
+  <stop offset="0" stop-color="#ffd07a" stop-opacity=".55"/><stop offset="55%" stop-color="#ffb35c" stop-opacity=".2"/>
+  <stop offset="100%" stop-color="#ffb35c" stop-opacity="0"/></linearGradient>
+<radialGradient id="coreM" cx="50%" cy="68%">
+  <stop offset="0" stop-color="#fff7e2"/><stop offset="30%" stop-color="#ffd07a"/>
+  <stop offset="58%" stop-color="#f07f2e"/><stop offset="84%" stop-color="#8a2f10"/><stop offset="100%" stop-color="#571b08"/></radialGradient>
+<radialGradient id="ghostS" cx="42%" cy="34%">
+  <stop offset="0" stop-color="#3d4f77" stop-opacity=".34"/><stop offset="62%" stop-color="#232f4c" stop-opacity=".2"/>
+  <stop offset="100%" stop-color="#131b30" stop-opacity=".06"/></radialGradient>
+<radialGradient id="innerHeat" cx="50%" cy="72%">
+  <stop offset="0" stop-color="#ff9d3c" stop-opacity=".3"/><stop offset="55%" stop-color="#ff9d3c" stop-opacity=".1"/>
+  <stop offset="100%" stop-color="#ff9d3c" stop-opacity="0"/></radialGradient>
+<radialGradient id="heartR"><stop offset="0" stop-color="#ffffff"/><stop offset="38%" stop-color="#ffe9bf"/>
+  <stop offset="100%" stop-color="#ffbe5a" stop-opacity="0"/></radialGradient>
+<radialGradient id="flashR"><stop offset="0" stop-color="#ffd282" stop-opacity=".55"/><stop offset="100%" stop-color="#ffd282" stop-opacity="0"/></radialGradient>
+<radialGradient id="beadR"><stop offset="0" stop-color="#ffffff"/><stop offset="45%" stop-color="#ffd98c"/>
+  <stop offset="100%" stop-color="#ffd98c" stop-opacity="0"/></radialGradient>
+<linearGradient id="gaugeG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe3a8"/><stop offset="1" stop-color="#ff9d3c"/></linearGradient>
+<linearGradient id="cruW" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#4a3a30"/><stop offset="45%" stop-color="#2a2028"/><stop offset="100%" stop-color="#151019"/></linearGradient>
+<linearGradient id="cruB" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#2c2129"/><stop offset="100%" stop-color="#0e0a12"/></linearGradient>
+<linearGradient id="rimG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d8a35e"/><stop offset="1" stop-color="#5c3b1c"/></linearGradient>
+<linearGradient id="hamHandle" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b4e28"/><stop offset="1" stop-color="#f0d8a8"/></linearGradient>
+<linearGradient id="hamHead" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6e5638"/><stop offset="1" stop-color="#ffdf9e"/></linearGradient>
+<linearGradient id="miniHeadG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a6c40"/><stop offset="1" stop-color="#ffe7b0"/></linearGradient>
+<radialGradient id="haloDone"><stop offset="0" stop-color="#2ee6a8" stop-opacity=".4"/><stop offset="100%" stop-color="#2ee6a8" stop-opacity="0"/></radialGradient>
+<radialGradient id="haloProg"><stop offset="0" stop-color="#ffc65c" stop-opacity=".45"/><stop offset="100%" stop-color="#ffc65c" stop-opacity="0"/></radialGradient>
+<radialGradient id="haloPend"><stop offset="0" stop-color="#6b7d9e" stop-opacity=".42"/><stop offset="100%" stop-color="#6b7d9e" stop-opacity="0"/></radialGradient>
+<radialGradient id="haloErr"><stop offset="0" stop-color="#ff6b6b" stop-opacity=".5"/><stop offset="100%" stop-color="#ff6b6b" stop-opacity="0"/></radialGradient>
+<radialGradient id="portR"><stop offset="0" stop-color="#ffe7bd"/><stop offset="55%" stop-color="#ffb35c" stop-opacity=".5"/><stop offset="100%" stop-color="#ffb35c" stop-opacity="0"/></radialGradient>
+<filter id="b2" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2"/></filter>
+<filter id="b6" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="6"/></filter>
+<filter id="b18" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="18"/></filter>
+<path id="ringPath" d="M 295,468 a 505,505 0 1,1 1010,0 a 505,505 0 1,1 -1010,0" fill="none"/>`;
+
+/* ---- background ---- */
+BG+=`<rect width="1600" height="900" fill="url(#bgR)"/>`;
+BG+=`<ellipse cx="430" cy="240" rx="360" ry="190" fill="url(#nebT)" filter="url(#b18)" class="neb" style="--nd:84s"/>`;
+BG+=`<ellipse cx="1265" cy="330" rx="320" ry="180" fill="url(#nebI)" filter="url(#b18)" class="neb" style="--nd:96s;animation-delay:-40s"/>`;
+BG+=`<circle cx="800" cy="600" r="330" fill="url(#warmG)"/>`;
+/* stars */
+let sA='',sB='',sC='';
+for(let i=0;i<130;i++){
+  const x=f1(rnd()*1600),y=f1(40+rnd()*840),r=f1(.5+rnd()*.95),o=f1(.1+rnd()*.55);
+  const cc=rnd();const col=cc<.84?'#cfe0ff':(cc<.94?'#ffd9a0':'#9fe8dc');
+  const s=`<circle cx="${x}" cy="${y}" r="${r}" fill="${col}" opacity="${o}"/>`;
+  if(i%3===0)sA+=s;else if(i%3===1)sB+=s;else sC+=s;}
+BG+=`<g class="twinkA">${sA}</g><g class="twinkB">${sB}</g><g class="twinkC">${sC}</g>`;
+/* 法阵 rings + 八卦 + ring inscription */
+BG+=`<g class="rotA tb" style="--rd:260s">
+  <text class="ringTxt"><textPath href="#ringPath" startOffset="0">乾 · 兑 · 离 · 震 · 巽 · 坎 · 艮 · 坤 · 天工开物 · 熔星铸码 · 乾 · 兑 · 离 · 震 · 巽 · 坎 · 艮 · 坤 · 天工开物 · 熔星铸码</textPath></text>
+  <circle cx="800" cy="468" r="505" fill="none" stroke="#8fa5d4" stroke-opacity=".07" stroke-width="1"/>
+  <circle cx="800" cy="468" r="530" fill="none" stroke="#8fa5d4" stroke-opacity=".05" stroke-width="1" stroke-dasharray="1 9"/></g>`;
+let trig='';
+const TPAT=[7,3,5,1,6,2,4,0];
+for(let k=0;k<8;k++){const ang=90-45*k;const p=pt(ang,248);let bars='';
+  for(let j=0;j<3;j++){const yy=(j-1)*5.2;
+    if((TPAT[k]>>j)&1)bars+=`<rect x="-8" y="${yy-1.1}" width="16" height="2.2" rx="1"/>`;
+    else bars+=`<rect x="-8" y="${yy-1.1}" width="6.4" height="2.2" rx="1"/><rect x="1.6" y="${yy-1.1}" width="6.4" height="2.2" rx="1"/>`;}
+  trig+=`<g transform="translate(${f1(p[0])},${f1(p[1])}) rotate(${f1(90-ang)})" fill="#8fa5d4" opacity=".38">${bars}</g>`;}
+BG+=`<g class="rotA rev tb" style="--rd:80s">${trig}
+  <circle cx="800" cy="468" r="262" fill="none" stroke="#8fa5d4" stroke-opacity=".1" stroke-width="1"/></g>`;
+BG+=`<g class="rotA tb" style="--rd:90s">
+  <circle cx="800" cy="468" r="222" fill="none" stroke="#8fa5d4" stroke-opacity=".13" stroke-width="1" stroke-dasharray="1 7"/>
+  <circle cx="800" cy="468" r="210" fill="none" stroke="#8fa5d4" stroke-opacity=".14" stroke-width="1" stroke-dasharray="30 6 4 6"/></g>`;
+/* payload phase sectors */
+function sectorPath(a0,a1,r0,r1){let d='M ';const N=30;
+  for(let k=0;k<=N;k++){const p=pt(a0+(a1-a0)*k/N,r1);d+=f1(p[0])+','+f1(p[1])+' L '}
+  for(let k=N;k>=0;k--){const p=pt(a0+(a1-a0)*k/N,r0);d+=f1(p[0])+','+f1(p[1])+(k?' L ':'')}
+  return d+' Z'}
+const angularStep=360/Math.max(1,nodeCount);
+DATA.phases.forEach((phase,index)=>{
+  const phaseNodes=nodes.filter(node=>node.phaseIndex===index);
+  if(!phaseNodes.length)return;
+  const first=phaseNodes[0].idx,last=phaseNodes[phaseNodes.length-1].idx;
+  const a0=145-first*angularStep+angularStep*.47;
+  const a1=145-last*angularStep-angularStep*.47;
+  BG+=`<path d="${sectorPath(a0,a1,286,536)}" fill="#8fa5d4" fill-opacity="${index%2?'.022':'.035'}"
+    stroke="#8fa5d4" stroke-opacity=".13" stroke-width="1" stroke-dasharray="3 7"/>`;
+});
+
+/* ---- rails / conduits ---- */
+segs.forEach((g,gi)=>{
+  const d=`M ${f1(g.s.x)},${f1(g.s.y)} Q ${f1(g.c[0])},${f1(g.c[1])} ${f1(g.d.x)},${f1(g.d.y)}`;
+  const src=ST[g.s.st],dst=ST[g.d.st];
+  if(g.hard){
+    DEFS+=`<linearGradient id="segG${gi}" gradientUnits="userSpaceOnUse" x1="${f1(g.s.x)}" y1="${f1(g.s.y)}" x2="${f1(g.d.x)}" y2="${f1(g.d.y)}">
+      <stop offset="0" stop-color="${src.main}"/><stop offset="1" stop-color="${dst.main}"/></linearGradient>`;
+    const dim=g.d.st==='pending'?.55:.95;
+    RAIL+=`<path d="${d}" fill="none" stroke="${src.main}" stroke-width="7" stroke-opacity=".14" filter="url(#b2)"/>`;
+    RAIL+=`<path id="dep-path-${gi}" class="dependency" data-dependency-from="${esc(g.s.id)}" data-dependency-to="${esc(g.d.id)}"
+      d="${d}" fill="none" stroke="url(#segG${gi})" stroke-width="2.6" stroke-opacity="${dim}"/>`;
+    RAIL+=`<path d="${d}" fill="none" stroke="${src.bright}" stroke-width="2"
+      stroke-dasharray="5 11" stroke-dashoffset="0" stroke-linecap="round" class="flow"
+      style="--dd:-192;--fd:${f1(Math.max(2.4,g.len/52))}s" opacity="${g.d.st==='pending'?.5:.9}"/>`;
+  }else{
+    RAIL+=`<path d="${d}" fill="none" stroke="#1f2a42" stroke-width="5" stroke-opacity=".6" stroke-linecap="round"/>`;
+    RAIL+=`<path id="dep-path-${gi}" class="dependency flow" data-dependency-from="${esc(g.s.id)}" data-dependency-to="${esc(g.d.id)}"
+      d="${d}" fill="none" stroke="#4a5f8e" stroke-width="1.3"
+      stroke-dasharray="2 8" stroke-dashoffset="0" style="--dd:-120;--fd:${f1(Math.max(4,g.len/26))}s" opacity=".75"/>`;
+  }
+  /* chevrons: direction of execution */
+  const us=g.hard?[.38,.62]:[.55];
+  us.forEach((u,ui)=>{
+    const p=qP(g,u),t=qT(g,u),ang=f1(Math.atan2(t[1],t[0])*180/Math.PI);
+    const big=g.hard&&ui===1;
+    const col=g.hard?dst.bright:'#6b7d9e';
+    const op=g.hard?(ui===1?.95:.6):.5;
+    const s=big?1.15:(g.hard?.9:.75);
+    RAIL+=`<g transform="translate(${f1(p[0])},${f1(p[1])}) rotate(${ang}) scale(${s})">
+      <path d="M -5.5,-4.5 L 5,0 L -5.5,4.5 L -2.5,0 Z" fill="${col}" opacity="${op}"/></g>`;
+  });
+  /* rune ticks on soft segs */
+  if(!g.hard){const n=Math.floor(g.len/30);
+    for(let k=1;k<n;k++){const u=k/n,p=qP(g,u),t=qT(g,u);const m=Math.hypot(t[0],t[1]);
+      const nx=-t[1]/m,ny=t[0]/m;
+      RAIL+=`<line x1="${f1(p[0]+nx*4)}" y1="${f1(p[1]+ny*4)}" x2="${f1(p[0]-nx*4)}" y2="${f1(p[1]-ny*4)}" stroke="#47588a" stroke-width="1" opacity=".3"/>`;}}
+});
+/* One terminal task per payload phase feeds the crucible; no task IDs are assumed. */
+const dependedOn=new Set();
+nodes.forEach(node=>node.depends.forEach(id=>dependedOn.add(String(id))));
+const phaseTerminals=DATA.phases.map((phase,index)=>{
+  const candidates=nodes.filter(node=>node.phaseIndex===index);
+  return candidates.slice().reverse().find(node=>!dependedOn.has(node.id))||candidates[candidates.length-1];
+}).filter(Boolean).slice(0,6);
+const portAngles=[205,335,238,302,258,282];
+const intakes=phaseTerminals.map((src,index)=>{
+  const a=portAngles[index%portAngles.length]*Math.PI/180;
+  const port=[CX+156*Math.cos(a),CY-156*Math.sin(a)];
+  const mx=(src.x+port[0])/2,my=(src.y+port[1])/2;
+  const d=`M ${f1(src.x)},${f1(src.y)} Q ${f1(mx)},${f1(my+38)} ${f1(port[0])},${f1(port[1])}`;
+  return{d,src,port,dim:src.st==='pending'};
+});
+intakes.forEach(k=>{
+  const c=ST[k.src.st];
+  RAIL+=`<path d="${k.d}" fill="none" stroke="${c.main}" stroke-width="10" stroke-opacity="${k.dim?.06:.14}" filter="url(#b2)"/>`;
+  RAIL+=`<path d="${k.d}" fill="none" stroke="${c.main}" stroke-width="3" stroke-opacity="${k.dim?.4:.85}"/>`;
+  RAIL+=`<path d="${k.d}" fill="none" stroke="${k.dim?'#93a6c8':'#ffe8bb'}" stroke-width="2" stroke-dasharray="5 12" stroke-dashoffset="0"
+    stroke-linecap="round" class="flow" style="--dd:-204;--fd:${k.dim?7:2.6}s" opacity="${k.dim?.35:.9}"/>`;
+  RAIL+=`<circle cx="${k.port[0]}" cy="${k.port[1]}" r="20" fill="url(#portR)" opacity="${k.dim?.3:.6}" class="breathe tb" style="--o1:.4;--o2:.8;--bd:3s"/>
+  <circle cx="${k.port[0]}" cy="${k.port[1]}" r="9.5" fill="none" stroke="#ffbe6a" stroke-width="2" opacity="${k.dim?.5:.85}"/>
+  <circle cx="${k.port[0]}" cy="${k.port[1]}" r="4" fill="#ffe7bd" opacity="${k.dim?.55:.95}"/>`;
+});
+
+/* ---- forge (center) ---- */
+/* light column */
+FORGE+=`<rect x="776" y="400" width="48" height="188" fill="url(#colG)" filter="url(#b6)" class="colflick"/>
+<rect x="793" y="410" width="14" height="178" fill="url(#colG)" filter="url(#b2)" opacity=".55" class="colflick" style="animation-delay:-1.3s"/>`;
+/* crucible */
+FORGE+=`
+<ellipse cx="800" cy="712" rx="86" ry="14" fill="#000" opacity=".4" filter="url(#b6)"/>
+<path d="M 700,662 C 730,688 870,688 900,662 C 882,700 830,708 800,708 C 770,708 718,700 700,662 Z" fill="url(#cruB)"/>
+<path d="M 776,702 L 824,702 L 831,718 L 769,718 Z" fill="#17121d"/>
+<ellipse cx="800" cy="719" rx="66" ry="10" fill="#0d0a12" stroke="#2a2234" stroke-width="1"/>
+<path d="M 648,592 C 664,650 712,678 800,682 C 888,678 936,650 952,592 L 936,588 C 918,638 872,658 800,660 C 728,658 682,638 664,588 Z" fill="url(#cruW)" stroke="#0a0710" stroke-width="1"/>
+<path d="M 688,642 C 740,668 860,668 912,642" fill="none" stroke="#59452e" stroke-width="1.2" opacity=".55"/>
+<path d="M 688,642 C 740,668 860,668 912,642" fill="none" stroke="#ffbe6a" stroke-width="1" stroke-dasharray="2 9" opacity=".25" class="flow" style="--dd:-110;--fd:14s"/>
+<path d="M 700,656 C 748,678 852,678 900,656" fill="none" stroke="#3a2c20" stroke-width="1" opacity=".6"/>
+<ellipse cx="800" cy="588" rx="154" ry="27" fill="none" stroke="url(#rimG)" stroke-width="3.4"/>
+<ellipse cx="800" cy="588" rx="136" ry="21" fill="url(#poolR)" class="poolpulse"/>
+<ellipse cx="800" cy="588" rx="104" ry="14" fill="none" stroke="#ffdf9e" stroke-width="1.5" stroke-dasharray="10 22" stroke-dashoffset="0" class="flow" style="--dd:-128;--fd:11s" opacity=".38"/>
+<ellipse cx="800" cy="589" rx="66" ry="8.5" fill="none" stroke="#fff3d8" stroke-width="1.2" stroke-dasharray="7 16" stroke-dashoffset="0" class="flow" style="--dd:92;--fd:9s" opacity=".45"/>
+<ellipse cx="800" cy="584" rx="90" ry="10" fill="#fff3d8" opacity=".5" filter="url(#b6)" class="poolpulse" style="animation-delay:-1.4s"/>`;
+/* claws */
+FORGE+=`
+<path d="M 664,576 C 636,540 638,502 664,468 C 668,462 674,462 676,468 C 656,502 658,538 684,572 Z" fill="#31283b" stroke="#6b5a4a" stroke-width=".8" stroke-opacity=".6"/>
+<path d="M 936,576 C 964,540 962,502 936,468 C 932,462 926,462 924,468 C 944,502 942,538 916,572 Z" fill="#31283b" stroke="#6b5a4a" stroke-width=".8" stroke-opacity=".6"/>
+<path d="M 676,468 C 656,502 658,538 684,572" fill="none" stroke="#c98a4a" stroke-opacity=".5" stroke-width="1.2"/>
+<path d="M 924,468 C 944,502 942,538 916,572" fill="none" stroke="#c98a4a" stroke-opacity=".5" stroke-width="1.2"/>
+<circle cx="668" cy="466" r="3.4" fill="#ffd98c" class="breathe tb" style="--o1:.6;--o2:1;--bd:2.8s"/>
+<circle cx="932" cy="466" r="3.4" fill="#ffd98c" class="breathe tb" style="--o1:.6;--o2:1;--bd:2.8s;animation-delay:-1.4s"/>`;
+/* star core: its molten fill level is driven by payload stats. */
+const CORE_LEVEL_Y=f1(540-(540-396)*TOTAL_PROGRESS/100);
+FORGE+=`
+<circle cx="800" cy="468" r="150" fill="url(#heartR)" opacity=".14" class="breathe tb" style="--o1:.1;--o2:.2;--bd:4.2s"/>
+<circle cx="800" cy="468" r="72" fill="url(#ghostS)"/>
+<circle cx="800" cy="468" r="72" fill="url(#innerHeat)"/>
+<circle cx="800" cy="468" r="72" fill="none" stroke="#9fb4e0" stroke-opacity=".5" stroke-width="1.2" stroke-dasharray="4 6"/>
+<path d="M 748,416 A 72 72 0 0 1 852,416" fill="none" stroke="#b9cdf2" stroke-opacity=".28" stroke-width="1.6"/>
+<ellipse cx="800" cy="468" rx="72" ry="24" fill="none" stroke="#8fa5d4" stroke-opacity=".24" stroke-width="1"/>
+<ellipse cx="800" cy="468" rx="26" ry="72" fill="none" stroke="#8fa5d4" stroke-opacity=".18" stroke-width="1"/>
+<ellipse cx="800" cy="420" rx="42" ry="9" fill="none" stroke="#8fa5d4" stroke-opacity=".16" stroke-width="1"/>
+<clipPath id="cpM"><path d="M 722,${f1(CORE_LEVEL_Y+5)} C 748,${f1(CORE_LEVEL_Y-7)} 772,${f1(CORE_LEVEL_Y+1)} 800,${f1(CORE_LEVEL_Y-3)}
+  C 828,${f1(CORE_LEVEL_Y-7)} 852,${f1(CORE_LEVEL_Y+3)} 878,${f1(CORE_LEVEL_Y+5)} L 878,552 L 722,552 Z"/></clipPath>
+<circle cx="800" cy="468" r="72" fill="url(#coreM)" clip-path="url(#cpM)"/>
+<path d="M 788,540 L 788,576 M 812,538 L 812,574" stroke="#ffce7e" stroke-width="2" stroke-dasharray="4 6" stroke-dashoffset="0" class="flow" style="--dd:-60;--fd:2.2s" opacity=".65"/>
+<path d="M 736,504 C 756,495 776,502 800,498 C 824,494 846,503 864,504" fill="none" stroke="#ffedc8" stroke-width="5" filter="url(#b2)" opacity=".3" class="menisk"/>
+<path d="M 736,504 C 756,495 776,502 800,498 C 824,494 846,503 864,504" fill="none" stroke="#ffedc8" stroke-width="1.8" class="menisk"/>
+<path d="M 760,540 L 768,522 L 758,512" fill="none" stroke="#ffd9a0" stroke-width="1.3" class="crackfk"/>
+<path d="M 838,542 L 830,524 L 842,514" fill="none" stroke="#ffd9a0" stroke-width="1.3" class="crackfk" style="animation-delay:-1.1s"/>
+<circle cx="782" cy="522" r="1.6" fill="#fff" opacity=".9"/><circle cx="818" cy="528" r="1.3" fill="#fff" opacity=".8"/><circle cx="800" cy="514" r="1.2" fill="#fff" opacity=".7"/>
+<circle cx="800" cy="506" r="44" fill="url(#heartR)" opacity=".5" class="breathe tb" style="--o1:.4;--o2:.7;--bd:3.4s"/>
+<circle cx="800" cy="506" r="15" fill="url(#heartR)" class="corebreath tb"/>
+<circle cx="800" cy="468" r="116" fill="url(#flashR)" class="forgeCharge"/>
+<g class="impactRay" stroke="#ffe5ad" stroke-linecap="round">
+  <path d="M 800,388 L 800,345 M 800,548 L 800,591 M 720,468 L 670,468 M 880,468 L 930,468" stroke-width="3"/>
+  <path d="M 744,412 L 710,378 M 856,412 L 890,378 M 744,524 L 710,558 M 856,524 L 890,558" stroke-width="2"/>
+  <circle cx="800" cy="468" r="94" fill="none" stroke-width="2.5" stroke-dasharray="4 10"/>
+</g>
+<circle cx="800" cy="468" r="82" fill="url(#flashR)" class="coreflash"/>
+<circle cx="800" cy="468" r="78" fill="none" stroke="#ffd9a0" stroke-width="1.6" class="shock tb"/>
+<circle cx="800" cy="468" r="78" fill="none" stroke="#ffd9a0" stroke-width="1.6" class="shock tb" style="animation-delay:.62s"/>
+<circle cx="800" cy="468" r="78" fill="none" stroke="#ffd9a0" stroke-width="1.6" class="shock tb" style="animation-delay:1.24s"/>`;
+/* forming gauge */
+FORGE+=`
+<circle cx="800" cy="468" r="92" fill="none" stroke="#2b3854" stroke-width="1.6" stroke-dasharray="2 5" opacity=".7"/>
+<circle id="forge-progress-arc" cx="800" cy="468" r="92" pathLength="100" fill="none" stroke="url(#gaugeG)"
+  stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${TOTAL_PROGRESS} 100" transform="rotate(-90 800 468)"/>
+<line x1="872" y1="525" x2="897" y2="541" stroke="#ffd98c" stroke-width="1.4" opacity=".8"/>
+<text id="forge-progress-text" x="902" y="548" class="gaugeT">星核成形 ${TOTAL_PROGRESS}%</text>`;
+/* grand hammers ×3 (signature) */
+const HCH=['淬','鍛','凝'];
+[-75,0,75].forEach((phi,hi)=>{
+  /* three deliberate blows inside one forge event, not three unrelated loops */
+  const dl=hi*.62;
+  FORGE+=`<g transform="rotate(${phi} 800 468)">
+    <g class="bigswing" style="animation-delay:${dl}s">
+      <rect x="796.5" y="304" width="7" height="46" rx="3.4" fill="url(#hamHandle)" stroke="#3a2a12" stroke-width=".6"/>
+      <circle cx="800" cy="303" r="4" fill="#cba26a" stroke="#3a2a12" stroke-width=".6"/>
+      <rect x="773.5" y="343" width="53" height="6" rx="3" fill="#8a6c40"/>
+      <path d="M 778,349 L 822,349 L 829,379 L 771,379 Z" fill="url(#hamHead)" stroke="#2e2210" stroke-width=".9"/>
+      <path d="M 771,379 L 829,379 L 829,384 L 771,384 Z" fill="#ffe7b0" class="bigface" style="animation-delay:${dl}s"/>
+      <path d="M 778,349 L 771,379 M 822,349 L 829,379" stroke="#ffe3a8" stroke-opacity=".35" stroke-width="1" fill="none"/>
+      <text x="800" y="371" text-anchor="middle" class="hamRune" style="font-size:14px">${HCH[hi]}</text>
+      <g class="bigspark tb" style="animation-delay:${dl}s">
+        <circle cx="800" cy="392" r="3.5" fill="#fff"/>
+        <path d="M 800,392 l 0,-15 M 800,392 l 13,-8 M 800,392 l -13,-8 M 800,392 l 9,11 M 800,392 l -9,11" stroke="#ffe8bb" stroke-width="2" stroke-linecap="round" fill="none"/>
+      </g>
+    </g></g>`;
+});
+/* gimbal orbits with traveling beads */
+FORGE+=`
+<g transform="rotate(-16 800 468)">
+  <ellipse cx="800" cy="468" rx="150" ry="46" fill="none" stroke="#8fa5d4" stroke-opacity=".16" stroke-width="1"/>
+  <ellipse cx="800" cy="468" rx="150" ry="46" fill="none" stroke="#ffe3a8" stroke-width="5" stroke-linecap="round"
+    stroke-dasharray="16 640" stroke-dashoffset="0" class="flow" style="--dd:-656;--fd:9s" opacity=".95"/>
+  <ellipse cx="800" cy="468" rx="150" ry="46" fill="none" stroke="#cfe0ff" stroke-width="3.2" stroke-linecap="round"
+    stroke-dasharray="10 646" stroke-dashoffset="-328" class="flow" style="--dd:-984;--fd:9s" opacity=".7"/>
+</g>
+<g transform="rotate(18 800 468)">
+  <ellipse cx="800" cy="468" rx="100" ry="148" fill="none" stroke="#8fa5d4" stroke-opacity=".12" stroke-width="1"/>
+  <ellipse cx="800" cy="468" rx="100" ry="148" fill="none" stroke="#ffd9a0" stroke-width="4.5" stroke-linecap="round"
+    stroke-dasharray="13 773" stroke-dashoffset="0" class="flow" style="--dd:786;--fd:13s" opacity=".8"/>
+</g>
+<circle cx="800" cy="468" r="276" fill="none" stroke="#cfe0ff" stroke-width="4" stroke-linecap="round"
+  stroke-dasharray="14 1720" stroke-dashoffset="0" class="flow" style="--dd:-1734;--fd:24s" opacity=".65"/>`;
+/* embers */
+for(let i=0;i<13;i++){
+  const x=f1(760+rnd()*80),ex=f1((rnd()-.5)*70),ey=f1(-(150+rnd()*150));
+  const ed=f1(4.5+rnd()*3.5),eo=f1(.4+rnd()*.45),er=f1(1.4+rnd()*1.4);
+  const col=i%4===0?'#fff':'#ffd9a0';
+  FX+=`<circle cx="${x}" cy="584" r="${er}" fill="${col}" class="ember"
+    style="--ex:${ex}px;--ey:${ey}px;--ed:${ed}s;--eo:${eo};animation-delay:-${f1(rnd()*8)}s"/>`;}
+
+/* ---- nodes (晶砧) ---- */
+const U=[[-1,-.30],[-.62,-.62],[.62,-.62],[1,-.30],[.55,.12],[0,1.02],[-.55,.12]];
+function poly(pts,R){return pts.map((p,i)=>(i?'L ':'M ')+f1(p[0]*R)+','+f1(p[1]*R)).join(' ')+' Z'}
+let tapIdx=0;
+nodes.forEach(n=>{
+  const R=NR(n),c=ST[n.st];
+  const L=[CX-n.x,CY-n.y];const Lm=Math.hypot(L[0],L[1]);L[0]/=Lm;L[1]/=Lm;
+  DEFS+=`<linearGradient id="bodyG-${n.uid}" gradientUnits="userSpaceOnUse"
+    x1="${f1(n.x+L[0]*R*1.15)}" y1="${f1(n.y+L[1]*R*1.15)}" x2="${f1(n.x-L[0]*R*1.15)}" y2="${f1(n.y-L[1]*R*1.15)}">
+    <stop offset="0" stop-color="${c.bodyA}"/><stop offset="1" stop-color="${c.bodyB}"/></linearGradient>
+  <linearGradient id="rimGd-${n.uid}" gradientUnits="userSpaceOnUse"
+    x1="${f1(n.x+L[0]*R)}" y1="${f1(n.y+L[1]*R)}" x2="${f1(n.x-L[0]*R)}" y2="${f1(n.y-L[1]*R)}">
+    <stop offset="0" stop-color="${c.bright}" stop-opacity=".9"/><stop offset=".7" stop-color="${c.main}" stop-opacity=".12"/>
+    <stop offset="1" stop-color="${c.main}" stop-opacity="0"/></linearGradient>`;
+  const haloId=n.st==='done'?'haloDone':(n.st==='in-progress'?'haloProg':(n.st==='error'?'haloErr':'haloPend'));
+  const haloR=n.st==='in-progress'?2.7:(n.st==='done'?2.4:(n.st==='error'?2.3:1.7));
+  let inner='';
+  /* halo */
+  if(n.st==='pending')inner+=`<circle r="${f1(R*haloR)}" fill="url(#${haloId})" class="pendb"/>`;
+  else inner+=`<circle r="${f1(R*haloR)}" fill="url(#${haloId})" class="breathe tb" style="--o1:.55;--o2:.95;--bd:${n.st==='in-progress'?2.6:4.4}s;animation-delay:-${f1(rnd()*3)}s"/>`;
+  /* charge ring for progress */
+  if(n.st==='in-progress')inner+=`<circle r="${f1(R+8)}" fill="none" stroke="${c.main}" stroke-width="1.4"
+    stroke-dasharray="9 15" opacity=".5" class="rotA tb" style="--rd:8s"/>`;
+  /* state silhouette: readable before color or legend */
+  if(n.st==='done')inner+=`
+    <circle r="${f1(R+7)}" fill="none" stroke="${c.bright}" stroke-width="3" opacity=".9"/>
+    <circle r="${f1(R+12)}" fill="none" stroke="${c.main}" stroke-width="1" stroke-dasharray="2 5" opacity=".6"/>`;
+  if(n.st==='pending')inner+=`
+    <circle r="${f1(R+7)}" fill="#070b13" fill-opacity=".68" stroke="${c.main}" stroke-width="2.2" stroke-dasharray="4 5"/>`;
+  if(n.st==='error')inner+=`
+    <path d="M ${f1(-R-8)},${f1(-R*.75)} L ${f1(-R*.45)},${f1(-R-12)} L 0,${f1(-R-6)} L ${f1(R*.48)},${f1(-R-13)} L ${f1(R+9)},${f1(-R*.7)}
+      L ${f1(R+5)},${f1(R*.45)} L 0,${f1(R+15)} L ${f1(-R-6)},${f1(R*.42)} Z"
+      fill="#ff2438" fill-opacity=".08" stroke="${c.main}" stroke-width="3" class="errfk"/>`;
+  /* body */
+  const bodyOp=n.st==='pending'?'fill-opacity=".65"':'';
+  inner+=`<path class="anvilBody" d="${poly(U,R)}" fill="url(#bodyG-${n.uid})" ${bodyOp} stroke="url(#rimGd-${n.uid})" stroke-width="1.6"/>`;
+  if(n.st==='pending')inner+=`<path d="${poly(U,R)}" fill="none" stroke="${c.main}" stroke-width="1" stroke-dasharray="3 4" opacity=".6"/>`;
+  /* top face */
+  inner+=`<path d="${poly(U.slice(0,4),R)}" fill="${c.main}" opacity="${n.st==='pending'?.14:.32}"/>`;
+  if(n.st==='in-progress')inner+=`<path class="tapface" d="${poly(U.slice(0,4),R)}" fill="#ffe7b0" style="animation-delay:VAR_DL"/>`;
+  /* facet seams */
+  inner+=`<path d="M ${f1(-.62*R)},${f1(-.62*R)} L 0,${f1(1.02*R)} M ${f1(.62*R)},${f1(-.62*R)} L 0,${f1(1.02*R)}"
+    stroke="#fff" stroke-opacity="${n.st==='pending'?.06:.15}" stroke-width=".8" fill="none"/>`;
+  /* trigram sigil */
+  const pat=TPAT[(n.idx*3+n.phaseIndex)%8];let bars='';
+  const bw=R*.5;
+  for(let j=0;j<3;j++){const yy=-R*.44+(j-1)*R*.14;
+    if((pat>>j)&1)bars+=`<rect x="${f1(-bw/2)}" y="${f1(yy-R*.032)}" width="${f1(bw)}" height="${f1(R*.064)}" rx="1"/>`;
+    else bars+=`<rect x="${f1(-bw/2)}" y="${f1(yy-R*.032)}" width="${f1(bw*.4)}" height="${f1(R*.064)}" rx="1"/><rect x="${f1(bw*.1)}" y="${f1(yy-R*.032)}" width="${f1(bw*.4)}" height="${f1(R*.064)}" rx="1"/>`;}
+  inner+=`<g fill="${c.bright}" opacity="${n.st==='pending'?.3:.55}">${bars}</g>`;
+  /* inner core */
+  const coreCls=n.st==='in-progress'?'coreglowP':(n.st==='done'?'breathe tb':'');
+  const coreSty=n.st==='in-progress'?'animation-delay:VAR_DL':(n.st==='done'?'--o1:.8;--o2:1;--bd:4s':'opacity:.55');
+  DEFS+=`<radialGradient id="coreG-${n.uid}"><stop offset="0" stop-color="${c.core}"/><stop offset="55%" stop-color="${c.main}"/><stop offset="100%" stop-color="${c.main}" stop-opacity="0"/></radialGradient>`;
+  inner+=`<circle r="${f1(R*.34)}" cy="${f1(R*.05)}" fill="url(#coreG-${n.uid})" class="${coreCls}" style="${coreSty}"/>`;
+  /* unmistakable state stamp on the crystal face */
+  if(n.st==='done')inner+=`
+    <circle cy="${f1(R*.05)}" r="${f1(R*.43)}" fill="#071b15" fill-opacity=".82" stroke="${c.bright}" stroke-width="1.6"/>
+    <path d="M ${f1(-R*.2)},${f1(R*.04)} L ${f1(-R*.04)},${f1(R*.2)} L ${f1(R*.25)},${f1(-R*.16)}"
+      fill="none" stroke="${c.bright}" stroke-width="${f1(Math.max(2.5,R*.12))}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  if(n.st==='pending')inner+=`
+    <path d="M -7,-3 V -8 A 7,7 0 0 1 7,-8 V -3" fill="none" stroke="${c.bright}" stroke-width="2.2" opacity=".9"/>
+    <rect x="-10" y="-3" width="20" height="15" rx="3" fill="#111a2b" stroke="${c.main}" stroke-width="1.8"/>
+    <circle cy="3" r="2" fill="${c.bright}" opacity=".85"/>`;
+  if(n.st==='error')inner+=`
+    <path d="M ${f1(-R*.55)},${f1(-R*.5)} L ${f1(-R*.08)},${f1(-R*.05)} L ${f1(-R*.32)},${f1(R*.2)}
+      M ${f1(R*.48)},${f1(-R*.42)} L ${f1(R*.05)},${f1(-R*.02)} L ${f1(R*.38)},${f1(R*.52)}
+      M ${f1(-R*.08)},${f1(-R*.05)} L ${f1(R*.05)},${f1(-R*.02)}"
+      fill="none" stroke="${c.bright}" stroke-width="2.4" stroke-linecap="round" class="errfk"/>`;
+  /* load pips */
+  const pw=n.load*7-2,py=R*1.02+8;let pips='';
+  for(let j=0;j<n.load;j++)pips+=`<rect x="${f1(-pw/2+j*7)}" y="${f1(py)}" width="5" height="2.6" rx="1.2" fill="${c.main}" opacity="${n.st==='pending'?.45:.8}"/>`;
+  inner+=pips;
+  /* mini forge hammer for progress */
+  let dl=0;
+  if(n.st==='in-progress'){
+    dl=f1(0.2+tapIdx*0.53);tapIdx++;
+    inner=inner.split('VAR_DL').join(`-${dl}s`);
+    const hs=f1(Math.min(1.15,Math.max(.72,R/27)));
+    inner+=`<g transform="translate(${f1(R*1.05)},${f1(-R*.62)}) scale(${hs})">
+      <g><animateTransform attributeName="transform" type="rotate"
+          values="36 0 0;36 0 0;-52 0 0;-52 0 0;36 0 0" keyTimes="0;0.4;0.47;0.53;1" dur="2.4s" begin="-${dl}s" repeatCount="indefinite"/>
+        <circle cx="0" cy="2" r="2" fill="#cba26a"/>
+        <rect x="-1.5" y="-24" width="3" height="26" rx="1.5" fill="#d8b87c"/>
+        <path d="M -8,-31 L 8,-31 L 10,-21 L -10,-21 Z" fill="url(#miniHeadG)" stroke="rgba(40,28,10,.8)" stroke-width=".7"/>
+        <path d="M -10,-21 L 10,-21 L 10,-18.6 L -10,-18.6 Z" fill="#ffe7b0" class="tapface" style="animation-delay:-${dl}s"/>
+      </g></g>`;
+    inner+=`<g class="tapspark tb" style="animation-delay:-${dl}s" transform="translate(${f1(R*.2)},${f1(-R*.72)}) scale(${hs})">
+      <circle r="2.6" fill="#fff"/>
+      <path d="M 0,0 l 0,-10 M 0,0 l 9,-5 M 0,0 l -9,-5 M 0,0 l 6,7 M 0,0 l -6,7" stroke="#ffe8bb" stroke-width="1.6" stroke-linecap="round" fill="none"/></g>`;
+  }
+  /* crystal and label share one task root, so every payload task is represented once. */
+  const side=n.side==='L'?-1:1;
+  const lx=f1(side*(R+16)),anchor=side<0?'end':'start';
+  const pillCx=f1(lx+side*64),pillX=f1(pillCx-28);
+  const visibleName=n.name.length>28?`${n.name.slice(0,27)}…`:n.name;
+  NODE+=`<g id="node-${n.uid}" class="node task-node" data-task-id="${esc(n.id)}" data-status="${n.st}"
+    data-phase-id="${esc(n.phaseId)}" transform="translate(${f1(n.x)},${f1(n.y)})"
+    aria-label="${esc(`${n.id} ${n.name} ${c.word}`)}">
+    <title>${esc(`${n.id} · ${n.name} · ${c.word}`)}</title>
+    <circle class="hitRing tb" r="${f1(R+4)}" fill="none" stroke="#fff" stroke-width="2"/>
+    <g class="bob" style="--bt:${f1(5+rnd()*2.5)}s;--bb:-3.5px;animation-delay:-${f1(rnd()*5)}s">${inner}</g>
+    <text x="${lx}" y="-3" text-anchor="${anchor}" class="lid" fill="${c.label}">${esc(n.id)}</text>
+    <g transform="translate(0,5)">
+      <rect x="${pillX}" y="-16" width="56" height="19" rx="9.5" class="statusPill"
+        fill="${c.main}" fill-opacity="${n.st==='pending'?'.12':'.2'}" stroke="${c.main}"/>
+      <text x="${pillCx}" y="-2.2" text-anchor="middle" class="statusWord" fill="${c.bright}">${c.word}</text>
+    </g>
+    <text x="${lx}" y="17" text-anchor="${anchor}" class="lname">${esc(visibleName)}</text>
+  </g>`;
+});
+
+/* foreground bokeh (depth) */
+FX+=`<circle cx="238" cy="212" r="88" fill="#16223a" opacity=".4" filter="url(#b18)" class="neb" style="--nd:70s"/>
+<circle cx="1432" cy="712" r="72" fill="#1a1626" opacity=".4" filter="url(#b18)" class="neb" style="--nd:60s;animation-delay:-25s"/>`;
+
+document.getElementById('scene').innerHTML=
+  `<defs>${DEFS}</defs><g>${BG}</g><g>${RAIL}</g><g>${FORGE}</g><g id="pulseL"></g><g>${NODE}</g><g>${FX}</g>`;
+
+/* ================= commit pulse engine ================= */
+const SVGNS='http://www.w3.org/2000/svg';
+const routes=segs.map(g=>{
+  const u0=Math.min(.35,NR(g.s)/g.len*.9);
+  const u1=Math.max(u0+.05,1-Math.min(.35,NR(g.d)/g.len*.7));
+  return{g,target:g.d,dur:900+g.len*2.2,u0,u1};
+});
+/* schedule: first at 800ms then every 4.4-5.4s (both自检帧都有脉冲在途) */
+const SCHED=[];{let t=800,k=0;const gaps=[4400,5100,4700,5400,4600];
+  while(routes.length&&t<600000){SCHED.push({t,r:k%routes.length});t+=gaps[k%5];k++;}}
+const pulseL=document.getElementById('pulseL');
+const active=[];let sIdx=0;
+function spawn(rt,born){
+  const g=document.createElementNS(SVGNS,'g');
+  const mk=(r,fill,op)=>{const c=document.createElementNS(SVGNS,'circle');
+    c.setAttribute('r',r);c.setAttribute('fill',fill);if(op)c.setAttribute('opacity',op);g.appendChild(c);return c};
+  const glow=mk(24,'url(#beadR)','.28'),halo=mk(15,'url(#beadR)','.55'),
+        tr3=mk(2.2,'#ffd98c','.3'),tr2=mk(3.2,'#ffd98c','.45'),tr1=mk(4.4,'#ffe3a8','.65'),core=mk(5.5,'#fff');
+  pulseL.appendChild(g);
+  active.push({rt,born,g,parts:[[core,0],[halo,0],[glow,0],[tr1,.05],[tr2,.1],[tr3,.15]]});}
+/* setTimeout-driven deterministic clock — rAF does not fire in headless
+   screenshot mode, timers do (and follow --virtual-time-budget) */
+let vt=0;const STEP=33;
+function tick(){
+  vt+=STEP;
+  while(sIdx<SCHED.length&&SCHED[sIdx].t<=vt){spawn(routes[SCHED[sIdx].r],SCHED[sIdx].t);sIdx++;}
+  for(let i=active.length-1;i>=0;i--){const p=active[i];
+    const u=(vt-p.born)/p.rt.dur;
+    if(u>=1){p.g.remove();active.splice(i,1);
+      const tn=document.getElementById('node-'+p.rt.target.uid);
+      if(tn){tn.classList.remove('hit');void tn.getBoundingClientRect;
+        tn.classList.add('hit');setTimeout(()=>tn.classList.remove('hit'),720);}
+      continue;}
+    p.parts.forEach(([el,lag])=>{
+      const uu=Math.max(0,u-lag);
+      const m=p.rt.u0+(p.rt.u1-p.rt.u0)*uu;
+      const q=qP(p.rt.g,m);
+      el.setAttribute('cx',f1(q[0]));el.setAttribute('cy',f1(q[1]));});}
+  setTimeout(tick,STEP);}
+setTimeout(tick,STEP);
+
+window.__STARFORGE_RENDERED__={
+  source:HAS_PAYLOAD?'payload':'fallback',
+  projectId:DATA.projectId,
+  projectName:DATA.projectName,
+  phaseCount:DATA.phases.length,
+  taskCount:nodes.length,
+  dependencyCount:segs.length,
+  progress:TOTAL_PROGRESS,
+  phases:DATA.phases.map(phase=>({id:phase.id,name:phase.name,total:phase.stats.total,done:phase.stats.done})),
+  tasks:nodes.map(node=>({id:node.id,status:node.st,phase:node.phaseId,depends:node.depends.slice()}))};
+document.dispatchEvent(new CustomEvent('starforge:rendered',{detail:window.__STARFORGE_RENDERED__}));
+</script>
+<script>
+(function(){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const far=document.querySelector('.depth-far'),mid=document.querySelector('.depth-mid'),near=document.querySelector('.depth-near');
+  addEventListener('pointermove',e=>{
+    const x=e.clientX/innerWidth-.5,y=e.clientY/innerHeight-.5;
+    far.style.transform=`translate(${x*-5}px,${y*-4}px)`;
+    mid.style.transform=`translate(${x*-12}px,${y*-9}px)`;
+    near.style.transform=`translate(${x*-26}px,${y*-19}px)`;
+  },{passive:true});
+})();
+</script>
+</body>
+</html>
